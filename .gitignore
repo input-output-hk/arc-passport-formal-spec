@@ -1,0 +1,11 @@
+# Nix build outputs
+/result
+/result-*
+
+# Agda build artifacts
+_build/
+*.agdai
+
+# Editor cruft
+\#*\#
+.\#*

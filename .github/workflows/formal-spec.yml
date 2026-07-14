@@ -1,0 +1,18 @@
+# Type-check the Agda formal specification and deploy its docs to GitHub Pages.
+#
+# Delegates to pagda's reusable workflow.
+name: formal-spec
+
+on: [push, pull_request]
+
+jobs:
+  pagda:
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: WhatisRT/pagda/.github/workflows/agda-ci.yml@main
+    with:
+      pages: true
+      cache: true
+      gc-max-store-size: 3G
