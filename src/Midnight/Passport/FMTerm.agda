@@ -1,43 +1,42 @@
 ------------------------------------------------------------------------
 -- Midnight.Passport.FMTerm
 --
--- The free strict symmetric monoidal category over named channel
--- generators, backed by categorical-crypto's
--- Categories.FreeStrictMonoidal library.
+-- The free strict monoidal category over named channel generators,
+-- backed by categorical-crypto's Categories.FreeStrictMonoidal.
 --
--- Objects (ObjTerm) are an opaque wrapper around List String
--- (channel names).  Tensoring (_⊗₀_) equals list concatenation.
--- Client modules that need access to the underlying List String —
--- e.g. the Compiler — should open an
---   opaque unfolding ObjTerm _⊗₀_ unit Var
--- block.  Architecture modules build terms using Var and _⊗₀_ for
--- objects; the opaque wrapping prevents external breakage.
+-- Objects are List String (channel names); tensoring (_⊗₀_) is list
+-- concatenation, so parallel layers glue definitionally.
 --
 -- Public interface
 -- ────────────────
---   ObjTerm, _⊗₀_, unit, Var   — object language (from library)
+--   ObjTerm, _⊗₀_, unit, Var   — object language (wire lists)
 --   Label                       — generator record { name : String }
---   HomTerm                     — morphism type (library's)
---   var, id, _∘_, _⊗₁_, σ      — raw library constructors
---   λ⇒, λ⇐, ρ⇒, ρ⇐, α⇒, α⇐   — coherence constructors
---   gen, idm, _>>_, _⊗_, swap  — convenience constructors
+--   HomTerm                     — morphism type (the library's WTerm)
+--   var, id, _∘_, _⊗₁_         — renamed library constructors
+--   gen, idm, _>>_, _⊗_        — convenience constructors
 ------------------------------------------------------------------------
 
 module Midnight.Passport.FMTerm where
 
-open import Categories.FreeStrictMonoidal using (module FreeMonoidalHelper)
-open import Categories.FreeMonoidal       using (Symm; _≤_; v≤v)
+open import Categories.FreeStrictMonoidal using (module FreeStrictMonoidalHelper)
 open import Data.String using (String)
-open import Data.List   using (List)
+open import Data.List using (List; []; _++_; [_])
 
 ------------------------------------------------------------------------
--- Instantiate the library at (Symm, String)
+-- Object language: wire lists over channel names
 
--- Exposed (not private) so sibling modules can instantiate `H.Mor` at a
--- different morphism-generator type while sharing this exact object language.
-module H = FreeMonoidalHelper Symm String
+ObjTerm : Set
+ObjTerm = List String
 
-open H public using (ObjTerm; _⊗₀_; unit; Var)
+infixr 10 _⊗₀_
+_⊗₀_ : ObjTerm → ObjTerm → ObjTerm
+_⊗₀_ = _++_
+
+unit : ObjTerm
+unit = []
+
+Var : String → ObjTerm
+Var = [_]
 
 ------------------------------------------------------------------------
 -- Generator type
@@ -50,17 +49,13 @@ record Label (A B : ObjTerm) : Set where
   field name : String
 
 ------------------------------------------------------------------------
--- HomTerm and all its constructors
+-- HomTerm and its constructors, instantiated at the Label generators
 
-open H.Mor Label public
-  using (HomTerm; var; id; _∘_; _⊗₁_; σ; λ⇒; λ⇐; ρ⇒; ρ⇐; α⇒; α⇐)
+module H = FreeStrictMonoidalHelper Label
 
-------------------------------------------------------------------------
--- Symmetry instance — resolves the ⦃ Symm ≤ Symm ⦄ constraint on σ
-
-instance
-  symm-inst : Symm ≤ Symm
-  symm-inst = v≤v
+open H public using ()
+  renaming ( WTerm to HomTerm; boxʷ to var; idʷ to id
+           ; _∘ʷ_ to infixr 9 _∘_; _⊗ʷ_ to infixr 10 _⊗₁_ )
 
 ------------------------------------------------------------------------
 -- Convenience aliases preserving the old FMTerm calling conventions
@@ -80,10 +75,6 @@ _⊗_ = _⊗₁_
 -- Identity on an explicit object.
 idm : (a : ObjTerm) → HomTerm a a
 idm _ = id
-
--- Symmetry with explicit objects.
-swap : (a b : ObjTerm) → HomTerm (a ⊗₀ b) (b ⊗₀ a)
-swap _ _ = σ
 
 ------------------------------------------------------------------------
 -- gen — lift a named component into a morphism

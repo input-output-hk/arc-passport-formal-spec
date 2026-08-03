@@ -12,9 +12,6 @@
 -- the original name-keyed flattener had, and the reason we briefly detoured
 -- through Catlab.
 --
--- `flatten` lives inside an `opaque unfolding ObjTerm _⊗₀_ unit Var` block
--- so the library's opaque ObjTerm is transparent as List String, giving each
--- generator its port-name lists (and lengths, for splitting tensors).
 ------------------------------------------------------------------------
 
 module Midnight.Passport.Compiler where
@@ -108,57 +105,44 @@ private
 -- 2.  Positional flatten (inside opaque unfolding)
 ------------------------------------------------------------------------
 
-opaque
-  unfolding ObjTerm _⊗₀_ unit Var
+-- Thread state and the positional list of incoming ports; return the
+-- updated state and the outgoing ports. |incoming| = |domain| always.
+flatten : ∀ {A B} → HomTerm A B → St → List Port → St × List Port
 
-  -- Thread state and the positional list of incoming ports; return the
-  -- updated state and the outgoing ports. |incoming| = |domain| always.
-  flatten : ∀ {A B} → HomTerm A B → St → List Port → St × List Port
+flatten {_} {B} (var ℓ) st inc =
+  let (bid , st₁) = freshNode (boxN (Label.name ℓ)) st
+      st₂         = wireInto bid inc st₁
+      outs        = map (λ ch → bid , ch) B
+  in  st₂ , outs
 
-  flatten {_} {B} (var ℓ) st inc =
-    let (bid , st₁) = freshNode (boxN (Label.name ℓ)) st
-        st₂         = wireInto bid inc st₁
-        outs        = map (λ ch → bid , ch) B
-    in  st₂ , outs
+flatten id s inc = s , inc
 
-  flatten id s inc = s , inc
+-- _∘_ is right-to-left: f runs first, feeding g.
+flatten (g ∘ f) st inc =
+  let (st₁ , mid) = flatten f st inc
+      (st₂ , out) = flatten g st₁ mid
+  in  st₂ , out
 
-  -- _∘_ is right-to-left: f runs first, feeding g.
-  flatten (g ∘ f) st inc =
-    let (st₁ , mid) = flatten f st inc
-        (st₂ , out) = flatten g st₁ mid
-    in  st₂ , out
+-- Split the incoming ports between the two factors by the left domain.
+flatten (_⊗₁_ {A} f g) st inc =
+  let (incF , incG) = take (length A) inc , drop (length A) inc
+      (st₁ , outF)  = flatten f st  incF
+      (st₂ , outG)  = flatten g st₁ incG
+  in  st₂ , (outF ++ outG)
 
-  -- Split the incoming ports between the two factors by the left domain.
-  flatten (_⊗₁_ {A} f g) st inc =
-    let (incF , incG) = take (length A) inc , drop (length A) inc
-        (st₁ , outF)  = flatten f st  incF
-        (st₂ , outG)  = flatten g st₁ incG
-    in  st₂ , (outF ++ outG)
+-- Outer input/output boundaries from the type indices.
+outerInputs : ObjTerm → St → St × List Port
+outerInputs A st = go A st []
+  where
+  go : List String → St → List Port → St × List Port
+  go []       s acc = s , reverse acc
+  go (c ∷ cs) s acc =
+    let (i , s′) = freshNode bndN s in go cs s′ ((i , c) ∷ acc)
 
-  -- Symmetry swaps the two halves; the coherence isos are identities on
-  -- the flat port list in the strict SMC.
-  flatten (σ {A}) st inc = st , (drop (length A) inc ++ take (length A) inc)
-  flatten λ⇒ s inc = s , inc
-  flatten λ⇐ s inc = s , inc
-  flatten ρ⇒ s inc = s , inc
-  flatten ρ⇐ s inc = s , inc
-  flatten α⇒ s inc = s , inc
-  flatten α⇐ s inc = s , inc
-
-  -- Outer input/output boundaries from the type indices.
-  outerInputs : ObjTerm → St → St × List Port
-  outerInputs A st = go A st []
-    where
-    go : List String → St → List Port → St × List Port
-    go []       s acc = s , reverse acc
-    go (c ∷ cs) s acc =
-      let (i , s′) = freshNode bndN s in go cs s′ ((i , c) ∷ acc)
-
-  outerOutputs : List Port → St → St
-  outerOutputs []             st = st
-  outerOutputs ((src , ch) ∷ ps) st =
-    let (o , st′) = freshNode bndN st in outerOutputs ps (addWire src o ch st′)
+outerOutputs : List Port → St → St
+outerOutputs []             st = st
+outerOutputs ((src , ch) ∷ ps) st =
+  let (o , st′) = freshNode bndN st in outerOutputs ps (addWire src o ch st′)
 
 ------------------------------------------------------------------------
 -- 3.  DOT emission
