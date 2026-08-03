@@ -169,6 +169,21 @@ objChannels : (ArchChan → Ch.Channel) → ObjTerm → Ch.Channel
 objChannels f []       = Ch.I
 objChannels f (x ∷ xs) = f x Ch.⊗₀ objChannels f xs
 
+unitorˡ : ∀ {X} → Mc.Machine (Ch.I Ch.⊗₀ X) X
+unitorˡ = Mc.TotalFunctionMachine' Ch.⊗-left-neutral Ch.⊗-left-intro
+
+unitorˡ⁻¹ : ∀ {X} → Mc.Machine X (Ch.I Ch.⊗₀ X)
+unitorˡ⁻¹ = Mc.TotalFunctionMachine' Ch.⊗-left-intro Ch.⊗-left-neutral
+
+module _ (f : ArchChan → Ch.Channel) where
+  mergeᴹ : ∀ A B → Mc.Machine (objChannels f A Ch.⊗₀ objChannels f B) (objChannels f (A ++ B))
+  mergeᴹ []       B = unitorˡ
+  mergeᴹ (x ∷ xs) B = (f x Mc.⊗ˡ mergeᴹ xs B) Mc.∘ Mc.⊗-assoc
+
+  splitᴹ : ∀ A B → Mc.Machine (objChannels f (A ++ B)) (objChannels f A Ch.⊗₀ objChannels f B)
+  splitᴹ []       B = unitorˡ⁻¹
+  splitᴹ (x ∷ xs) B = Mc.⊗-assoc⃖ Mc.∘ (f x Mc.⊗ˡ splitᴹ xs B)
+
 record ChannelModel : Set₁ where
   field
     ⟦TBD⟧            : Ch.Channel
@@ -224,4 +239,15 @@ record MachineModel : Set₁ where
   ⟦ localWallet     ⟧₁ = ⟦localWallet⟧
   ⟦ proofServer     ⟧₁ = ⟦proofServer⟧
   ⟦ passportKey     ⟧₁ = ⟦passportKey⟧
+
+  -- The induced monoidal functor `C_arch → Machine`
+  ⟦_⟧ : ∀ {A B} → WTerm A B → Mc.Machine ⟦ A ⟧₀ ⟦ B ⟧₀
+  ⟦ boxʷ b ⟧  = ⟦ b ⟧₁
+  ⟦ idʷ ⟧     = Mc.id
+  ⟦ g ∘ʷ f ⟧  = ⟦ g ⟧ Mc.∘ ⟦ f ⟧
+  ⟦ _⊗ʷ_ {nl} {ml} {nr} {mr} f g ⟧ =
+    mergeᴹ channelSemantics ml mr Mc.∘ (⟦ f ⟧ Mc.⊗₁ ⟦ g ⟧) Mc.∘ splitᴹ channelSemantics nl nr
+
+  ⟦architecture⟧ : Mc.Machine ⟦ unit ⟧₀ ⟦ Var User ⟧₀
+  ⟦architecture⟧ = ⟦ architectureᶜ ⟧
 ```
