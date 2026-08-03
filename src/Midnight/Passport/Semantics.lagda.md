@@ -28,6 +28,8 @@ DOT and laid out by `dot` — so it cannot drift from the definitions on this pa
 </figure>
 
 ```agda
+{-# OPTIONS --safe #-}
+
 module Midnight.Passport.Semantics where
 
 open import Data.String using (String)
