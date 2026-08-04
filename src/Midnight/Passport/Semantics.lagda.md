@@ -53,7 +53,7 @@ concatenation (`Var`/`_⊗₀_`/`unit` are the same sugar `FMTerm` provides over
 
 ```agda
 data ArchChan : Set where
-  TBD TBD-SYNC RECOVERY-P5 READ-STATE JUBJUB-SCHNORR STATE WITNESS-IPC User : ArchChan
+  TBD TBD-SYNC RECOVERY-P5 READ-STATE JUBJUB-SCHNORR STATE WITNESS-IPC CHAIN User : ArchChan
 
 ObjTerm : Set
 ObjTerm = List ArchChan
@@ -83,7 +83,7 @@ data ArchBox : ObjTerm → ObjTerm → Set where
   peerDevices     : ArchBox unit (Var TBD-SYNC)
   recoveryHelpers : ArchBox unit (Var RECOVERY-P5)
   indexer         : ArchBox unit (Var READ-STATE)
-  accountCustody  : ArchBox (Var TBD ⊗₀ Var TBD) (Var JUBJUB-SCHNORR)
+  accountCustody  : ArchBox (Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN) (Var JUBJUB-SCHNORR)
   localWallet     : ArchBox (Var TBD-SYNC) (Var STATE)
   proofServer     : ArchBox unit (Var WITNESS-IPC)
   passportKey     : ArchBox
@@ -96,16 +96,18 @@ module HA = FreeStrictMonoidalHelper ArchBox; open HA
 
 ## 3. `architecture`, rebuilt in `C_arch`
 
-The architecture itself is a single morphism `unit → User` in `C_arch`: three
-layers composed left-to-right, each a tensor of boxes.
+The architecture itself is a single morphism `CHAIN → User` in `C_arch`: the
+blockchain enters at the bottom boundary (it is the environment's wire, read
+by `accountCustody`), and three layers of boxes are composed left-to-right,
+the `CHAIN` wire threading through the first.
 
 ```agda
-architectureᶜ : WTerm unit (Var User)
+architectureᶜ : WTerm (Var CHAIN) (Var User)
 architectureᶜ =
     boxʷ passportKey
   ∘ʷ (    boxʷ recoveryHelpers ⊗ʷ boxʷ indexer ⊗ʷ boxʷ accountCustody
        ⊗ʷ boxʷ localWallet     ⊗ʷ boxʷ proofServer )
-  ∘ʷ ( boxʷ didContract ⊗ʷ boxʷ nameService ⊗ʷ boxʷ peerDevices )
+  ∘ʷ ( boxʷ didContract ⊗ʷ boxʷ nameService ⊗ʷ idʷ ⊗ʷ boxʷ peerDevices )
 ```
 
 ## 4. Syntax functor `C_arch → FMTerm`
@@ -126,6 +128,7 @@ chanName READ-STATE     = "READ STATE"
 chanName JUBJUB-SCHNORR = "JUBJUB SCHNORR"
 chanName STATE          = "STATE"
 chanName WITNESS-IPC    = "WITNESS-IPC"
+chanName CHAIN          = "CHAIN"
 chanName User           = "User"
 
 Φ : ObjTerm → FM.ObjTerm
@@ -138,7 +141,8 @@ synBox peerDevices     = FM.gen "+ peer devices"          FM.unit (FM.Var "TBD S
 synBox recoveryHelpers = FM.gen "Recovery helpers"        FM.unit (FM.Var "RECOVERY-P5")
 synBox indexer         = FM.gen "Indexer"                 FM.unit (FM.Var "READ STATE")
 synBox accountCustody  = FM.gen "Account custody contract"
-                           (FM.Var "TBD" FM.⊗₀ FM.Var "TBD") (FM.Var "JUBJUB SCHNORR")
+                           (FM.Var "TBD" FM.⊗₀ FM.Var "TBD" FM.⊗₀ FM.Var "CHAIN")
+                           (FM.Var "JUBJUB SCHNORR")
 synBox localWallet     = FM.gen "Local wallet storage"    (FM.Var "TBD SYNC") (FM.Var "STATE")
 synBox proofServer     = FM.gen "Proof server"            FM.unit (FM.Var "WITNESS-IPC")
 synBox passportKey     = FM.gen "Passport Key"
@@ -153,7 +157,7 @@ syn (g ∘ʷ f)  = syn g FM.∘ syn f
 syn (_⊗ʷ_ {A} {B} {C} {D} f g)
   rewrite map-++ chanName A C | map-++ chanName B D = syn f FM.⊗₁ syn g
 
-architectureˢ : FM.HomTerm FM.unit (FM.Var "User")
+architectureˢ : FM.HomTerm (FM.Var "CHAIN") (FM.Var "User")
 architectureˢ = syn architectureᶜ
 ```
 
@@ -195,6 +199,7 @@ record ChannelModel : Set₁ where
     ⟦JUBJUB-SCHNORR⟧ : Ch.Channel
     ⟦STATE⟧          : Ch.Channel
     ⟦WITNESS-IPC⟧    : Ch.Channel
+    ⟦CHAIN⟧          : Ch.Channel
     ⟦User⟧           : Ch.Channel
 
   channelSemantics : ArchChan → Ch.Channel
@@ -205,15 +210,14 @@ record ChannelModel : Set₁ where
   channelSemantics JUBJUB-SCHNORR = ⟦JUBJUB-SCHNORR⟧
   channelSemantics STATE          = ⟦STATE⟧
   channelSemantics WITNESS-IPC    = ⟦WITNESS-IPC⟧
+  channelSemantics CHAIN          = ⟦CHAIN⟧
   channelSemantics User           = ⟦User⟧
 
   -- the functor's action on objects
   ⟦_⟧₀ : ObjTerm → Ch.Channel
   ⟦_⟧₀ = objChannels channelSemantics
 
-record MachineModel : Set₁ where
-  field
-    channels : ChannelModel
+record MachineModel (channels : ChannelModel) : Set₁ where
   open ChannelModel channels public
   field
     ⟦didContract⟧     : Mc.Machine ⟦ unit ⟧₀ ⟦ Var TBD ⟧₀
@@ -221,7 +225,7 @@ record MachineModel : Set₁ where
     ⟦peerDevices⟧     : Mc.Machine ⟦ unit ⟧₀ ⟦ Var TBD-SYNC ⟧₀
     ⟦recoveryHelpers⟧ : Mc.Machine ⟦ unit ⟧₀ ⟦ Var RECOVERY-P5 ⟧₀
     ⟦indexer⟧         : Mc.Machine ⟦ unit ⟧₀ ⟦ Var READ-STATE ⟧₀
-    ⟦accountCustody⟧  : Mc.Machine ⟦ Var TBD ⊗₀ Var TBD ⟧₀ ⟦ Var JUBJUB-SCHNORR ⟧₀
+    ⟦accountCustody⟧  : Mc.Machine ⟦ Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN ⟧₀ ⟦ Var JUBJUB-SCHNORR ⟧₀
     ⟦localWallet⟧     : Mc.Machine ⟦ Var TBD-SYNC ⟧₀ ⟦ Var STATE ⟧₀
     ⟦proofServer⟧     : Mc.Machine ⟦ unit ⟧₀ ⟦ Var WITNESS-IPC ⟧₀
     ⟦passportKey⟧     : Mc.Machine
@@ -250,6 +254,6 @@ record MachineModel : Set₁ where
   ⟦ _⊗ʷ_ {nl} {ml} {nr} {mr} f g ⟧ =
     mergeᴹ channelSemantics ml mr Mc.∘ (⟦ f ⟧ Mc.⊗₁ ⟦ g ⟧) Mc.∘ splitᴹ channelSemantics nl nr
 
-  ⟦architecture⟧ : Mc.Machine ⟦ unit ⟧₀ ⟦ Var User ⟧₀
+  ⟦architecture⟧ : Mc.Machine ⟦ Var CHAIN ⟧₀ ⟦ Var User ⟧₀
   ⟦architecture⟧ = ⟦ architectureᶜ ⟧
 ```
