@@ -128,11 +128,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1782845657,
-        "narHash": "sha256-iyyppCoU3CVYym7tywMq5b/G/0yYx+TIT6ri2pl8Vm8=",
+        "lastModified": 1785939805,
+        "narHash": "sha256-KTqWHEJbV4SwcxZj8wtYTC1lkm/2EtL2+Ja2ZA/MPxc=",
         "owner": "WhatisRT",
         "repo": "pagda",
-        "rev": "3c3e16a0f8587886064e41c6d03be8acd19420c1",
+        "rev": "0f63597a86ea682460d479c7942a6e533c7cd988",
         "type": "github"
       },
       "original": {

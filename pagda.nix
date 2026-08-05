@@ -14,12 +14,8 @@ in
   docs = pagda.docBackends.enhancedHtml {
     offline = false;
     modules = [ "Passport" "Midnight" ];
+    entryModule = "Passport";
   };
 
-  # Fold the rendered diagram and a landing page (the docs tree has no index of
-  # its own) into the docs output.
-  docsAssets = {
-    "architecture.svg" = architectureSvg;
-    "index.html" = ./docs-index.html;
-  };
+  docsAssets."architecture.svg" = architectureSvg;
 }
