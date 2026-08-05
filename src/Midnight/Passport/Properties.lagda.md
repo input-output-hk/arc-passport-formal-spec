@@ -26,10 +26,12 @@ module Midnight.Passport.Properties
   where
 
 open import Data.Empty
+open import Data.List    using ([]; _∷_)
 open import Data.Integer using (ℤ; 0ℤ; +_; _+_; _≤_)
 open import Data.Maybe
 open import Data.Nat     using (ℕ)
 open import Data.Product
+import Data.Sum as Sum
 open import Relation.Binary.PropositionalEquality
 
 open import CategoricalCrypto.Channel.Selection
@@ -117,11 +119,17 @@ parameter while the transaction vocabulary is not concrete. The *real*
 balance after a run is then defined to be the genesis balance plus the
 net flow of the run.
 
-A queried balance may lag the real one: incoming transactions can sit
+Only adopted transactions carry value: a `ChainEvent` reports what the
+chain adopted, and
+that is the moment the balance changes. Submitting a transaction (a
+`LedgerWrite`) has no effect by itself. It may or may not be adopted,
+and accounting at submission would force rollback machinery for the
+transactions that don't make it.
+
+A queried balance may lag the real one: adopted transactions can sit
 unread (one can receive funds without checking the wallet, no network
-connectivity, etc.), so answers may *under*-report. Outgoing
-transactions are initiated by the wallet itself and are always known
-to it. The property is therefore a pair:
+connectivity, etc.), so answers may *under*-report. The property is
+therefore a pair:
 
 * **soundness** — an observed balance never exceeds the real one (no value is
   created); no eventuality is needed for this half;
@@ -267,16 +275,55 @@ module GlobalFromLocal-generic
 
 ## 4. The preservation of value theorem
 
-Fix the data of a deployment: an implementation of every component, what a
-transaction is worth, and where the system starts.
+Combinators for extracting data out of messages.
+
+```agda
+⊗-proj : ∀ {A : Set} {C D} m → (modeType m C → A) → (modeType m D → A)
+       → modeType m (C Ch.⊗₀ D) → A
+⊗-proj {C = C} {D} m f g x = Sum.[ f , g ] (destruct-⊗ {C} {D} {m} x)
+
+module _ {A : Set} (f : ArchChan → Channel)
+         (proj : ∀ c m → modeType m (f c) → Maybe A) where
+
+  wiresProj : ∀ xs m → modeType m (objChannels f xs) → Maybe A
+  wiresProj []       _ _ = nothing
+  wiresProj (x ∷ xs) m   = ⊗-proj m (proj x m) (wiresProj xs m)
+
+  -- project out of a machine-boundary message (domain wires only)
+  projOn : ∀ dom cod m
+         → modeType m (objChannels f dom ⊗ᵀ objChannels f cod) → Maybe A
+  projOn dom cod m = ⊗-proj m (wiresProj dom m) λ _ → nothing
+```
+
+Fix the data of a deployment: an implementation of every component (`mm`), the
+balance impact of each adopted transaction (`txval`), and where the system
+starts (`s₀`, `b₀`).
 
 ```agda
 module Theorem
   (mm : MachineModel channelModel) (let open MachineModel mm)
-  (txValue  : Val ⟦architecture⟧) (txValueᴬ : Val ⟦accountCustody⟧)
+  (txval : ChainEvent → ℤ)
+  -- ^ an adopted transaction's balance impact: deposits positive, own
+  -- spends negative, 0 if not a transaction
   (s₀ : Machine.State ⟦architecture⟧)
   (b₀ : ℕ)
   where
+
+  -- only the CHAIN wire carries value: an adopted transaction
+  -- (ChainEvent) moves the balance
+  txProj : ∀ c m → modeType m (channelSemantics c) → Maybe ℤ
+  txProj CHAIN In e = just (txval e)
+  txProj _     _  _ = nothing
+
+  opaque
+    txValue : Val ⟦architecture⟧
+    txValue i _ = fromMaybe 0ℤ
+      (projOn channelSemantics txProj (Var CHAIN) (Var User) In i)
+
+    txValueᴬ : Val ⟦accountCustody⟧
+    txValueᴬ i _ = fromMaybe 0ℤ
+      (projOn channelSemantics txProj
+        (Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN) (Var JUBJUB-SCHNORR) In i)
 
   private
     module GFL = GlobalFromLocal-generic
