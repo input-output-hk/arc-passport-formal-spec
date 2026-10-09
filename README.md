@@ -3,9 +3,21 @@
 An [Agda](https://agda.readthedocs.io/) formal specification of the Midnight
 Passport project.
 
+## Project standards
+
+[Project guidelines](docs/project-guidelines.md) define the human-readability,
+navigation, code-structure, and acceptance requirements for specifications and
+advertised properties.
+
+[Agent instructions](docs/agents/workflow.md) define the mandatory review workflow;
+[reviewer instructions](docs/agents/readability-reviewer.md) define its execution.
+
+## References
+
 - **Main repository:** [midnightntwrk/passport](https://github.com/midnightntwrk/passport)
   + [Key passport properties](https://github.com/midnightntwrk/passport/blob/main/docs/plans/PROMISES.md)
   + [Security properties](docs/security-properties.md)
+  + [Modelling gaps and concrete account model](docs/modelling-gaps-and-account-model.md)
 - **Rendered documentation:** <https://input-output-hk.github.io/arc-passport-formal-spec/>
 
 ## Contract DSL
