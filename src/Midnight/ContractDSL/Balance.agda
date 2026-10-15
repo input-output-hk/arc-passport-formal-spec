@@ -2,7 +2,7 @@
 
 module Midnight.ContractDSL.Balance where
 
-open import Data.Bool.Base
+open import Data.Bool.Base hiding (_≤_; _<_)
 open import Data.List.Base
 open import Data.Maybe.Base
 open import Data.Nat.Base
@@ -23,16 +23,36 @@ open import Midnight.ContractDSL.Protocol balanceLedger Assertion
 send : Account → ℕ → Program ⊤
 send a n = assert (0 <ᵇ n) emptyTransfer >> perform (ledger (transfer a n))
 
+private
+  transfer-result : (a : Account) (n : ℕ) (s : State) {t : State} →
+    prepare (transfer a n) s ≡ inj₂ (tt , t) →
+    n ≤ balanceOf a s × t ≡ move a n s
+  transfer-result a n s prepared with n ≤? balanceOf a s
+  ... | no _ with prepared
+  ...   | ()
+  transfer-result a n s refl | yes enough = enough , refl
+
+send-details : (a : Account) (n : ℕ) (s : State) {t : State} {j : Journal} →
+  eval (send a n) s ≡ inj₂ (finished tt t j) →
+  (0 <ᵇ n) ≡ true × n ≤ balanceOf a s × t ≡ move a n s ×
+  j ≡ operated (transfer a n) tt ∷ []
+send-details a n s {t} {j} ev =
+  hoare-bind {P = λ u → u ≡ s}
+    {R = λ _ u js → u ≡ s × (0 <ᵇ n) ≡ true × js ≡ []}
+    {Q = λ _ v js → (0 <ᵇ n) ≡ true × n ≤ balanceOf a s × v ≡ move a n s ×
+      js ≡ operated (transfer a n) tt ∷ []}
+    (assert (0 <ᵇ n) emptyTransfer) (λ _ → perform (ledger (transfer a n)))
+    (hoare-assert (0 <ᵇ n) emptyTransfer (λ u pre positive → pre , positive , refl))
+    (λ _ js → hoare-ledger (transfer a n) λ
+      { u tt v (refl , positive , refl) prepared →
+        let enough , moved = transfer-result a n s prepared in
+        positive , enough , moved , refl })
+    s tt t j refl ev
+
 send-conserves : (a : Account) (n : ℕ) (s : State) {t : State} {j : Journal} →
   eval (send a n) s ≡ inj₂ (finished tt t j) → total t ≡ total s
-send-conserves a n s ev with 0 <ᵇ n
-... | false with ev
-...   | ()
-send-conserves a n s ev | true with n ≤? balanceOf a s
-... | no _ with ev
-...   | ()
-send-conserves a n s ev | true | yes enough with ev
-...   | refl = move-conserves a n s enough
+send-conserves a n s ev with send-details a n s ev
+... | positive , enough , refl , recorded = move-conserves a n s enough
 
 balanceContract : Contract
 balanceContract = record
@@ -67,7 +87,7 @@ validTx : Tx
 validTx = makeTx alice 3 tt 0 initial tt afterFirst transferJournal successful
 
 accepted-first : admission ctx initial validTx ≡ (afterFirst , accepted)
-accepted-first = refl
+accepted-first = makeTx-admitted alice 3 tt 0 initial tt afterFirst transferJournal successful ctx tt refl
 
 -- Unit-result transfers rebase while funds remain; replay is not banned.
 accepted-again : admission ctx afterFirst validTx ≡ (afterSecond , accepted)
