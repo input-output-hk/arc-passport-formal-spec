@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "recovery:pin": "node gate.mjs pin",
+    "recovery:gate": "node gate.mjs run"
+  }
+}

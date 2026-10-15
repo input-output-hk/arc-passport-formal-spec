@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "sourceRevision": "7d21a277be9f92e7bc36a1a296599b9420194c44",
+  "source": {
+    "contracts/account.compact": "8e8a9f9cc460903d72491f82d98ed18b0e2dea397b59d391d9c42f2aac0f6db0",
+    "contracts/control.compact": "2f092f1f7955256a542f1bfea5622854b5128b038fefea16e52c4718ebd05bcb",
+    "contracts/faucet.compact": "1834ad2a49235cc405390f22fdd3e9480bfe66ebf88817947e4250d400b95f71",
+    "package.json": "177aa58e92c745f407696894f155f45bc17a5667976d59507cca884e8dca7e94",
+    "package-lock.json": "445c73500a7cf836cf917c8c591bd6db432024f613a61b58a2e54505aa756c60"
+  },
+  "signing": "6d5c443bc896203b84e00feb5583eee7a0f974437cf555d8891dab7d54ac6898",
+  "repairedAccount": "f73e0e70502eb9fabea06d420d14af2a512dfbb4b125052c87abab29ed2ba0bb",
+  "repairedSigning": "8f7e4fef82b6b2733c961a9146334381ad064239f2bb49a05f3f10f1fe50f1a2",
+  "dependencies": "970814d6bda4917bb1ffab3d2252e8ec9502322907ff591694fb6751e4516ae4",
+  "repairedDependencies": "2c24bbb563b32df3e0730d1841480ef20e514f1727de4eb56c68e2ea6282e3ad",
+  "compiler": "26e43ca45aafc7fa0d0415a053d4d8092367516fac2f118bb37c7fbd775d4a40",
+  "compilerVersion": "0.33.0-rc.2",
+  "runtimeVersion": "0.18.0-rc.1",
+  "nodeVersion": "v22.22.1",
+  "node": "7142be834142d58bca93f8acac61e3bdf4ed8c7b40392f2e99fd9f685fa5f90a",
+  "settings": {
+    "seeds": [1, 2, 3, 4, 5],
+    "randomSteps": 60,
+    "timeOrigin": 1800000000,
+    "scenarioVetoWindow": "86400",
+    "generatedAccountSeedOffset": 2000,
+    "randomAccountSeedOffset": 1000,
+    "generatedEpochs": "1 + PRNG(seed).below(3), after drawing veto window",
+    "generatedVetoWindow": ["60", "604800"],
+    "plantedUseCounter": ["0", "4"],
+    "compileArgs": ["--skip-zk", "--feature-zkir-v3"],
+    "mutations": ["deadline", "debit"]
+  }
+}
