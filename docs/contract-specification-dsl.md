@@ -38,8 +38,8 @@ The modules distinguish executable definitions from the wider pseudocode below:
 | Module | Implemented definitions and checked results |
 |---|---|
 | [`Ledger.agda`](../src/Midnight/ContractDSL/Ledger.agda) | Minimal `Semantics` interface and generic `Execution`: result validation, `apply`, `same-view`, and `rebase` derived once |
-| [`Program.agda`](../src/Midnight/ContractDSL/Program.agda) | Parameterized monadic programs, one traced `execute` with `eval` outcome projection, separate operation/assertion errors, publication, chain conditions and ordered replay; `replay-refinement` and `lift-Hoare` |
-| [`Protocol.agda`](../src/Midnight/ContractDSL/Protocol.agda) | Parameterized contracts/communication, induced relation, certificate validation, atomic admission, declared-result `Observation.wrapper`, private `recipientAnswer` and upstream composition; `accepted-refinement`, `system-invariant`, `reachable-invariant` and `finishAdmission-public` |
+| [`Program.agda`](../src/Midnight/ContractDSL/Program.agda) | Parameterized monadic programs, traced execution, separate operation/assertion errors, publication, chain conditions and ordered replay; `bind-success`, compositional `Hoare` rules, `replay-eligible`, `replay-refinement` and `lift-Hoare` |
+| [`Protocol.agda`](../src/Midnight/ContractDSL/Protocol.agda) | Parameterized contracts/communication, certificate validation, atomic admission, generic `Admissions`, declared-result `Observation.wrapper` and upstream composition; `makeTx-admitted`, `accepted-conditions`, `accepted-refinement` and system/reachability invariants |
 | [`MidnightLedger.agda`](../src/Midnight/ContractDSL/MidnightLedger.agda) | Concrete shared lock/Merkle example operations, bounded counters, mutable root and flag contents |
 | [`SymbolicDigest.agda`](../src/Midnight/ContractDSL/SymbolicDigest.agda), [`FixtureLedger.agda`](../src/Midnight/ContractDSL/FixtureLedger.agda) | Concrete symbolic hash algebra, separate four-member fixture root and fixture state initialization |
 | [`BalanceLedger.agda`](../src/Midnight/ContractDSL/BalanceLedger.agda), [`Balance.agda`](../src/Midnight/ContractDSL/Balance.agda) | Independent two-account balance map, transfer/error/replay behavior and conservation lifted through the same generic admission/reachability proofs |
@@ -54,6 +54,28 @@ including arbitrary `submitOther` transactions. Accepted replay is related back
 to evaluation at the actual admission state, not just the client's old view.
 Rejected transactions preserve the chain state. The lock example instantiates
 this generic theorem rather than reproving its protocol invariant independently.
+
+The proof-composition interface follows the program's binds. `bind-success`
+recovers the intermediate `Finished` result, the continuation's successful
+evaluation, and the concatenation of their journals. `hoare-pure`,
+`hoare-assert`, `hoare-ledger` and `hoare-bind` compose the existing `Hoare`
+judgment; assertion rules expose the successful guard, and ledger rules expose
+the observed result and `prepare` equation. They do not impose an account policy.
+Concrete applications are recovery's authority/execution proofs,
+[`Balance.send-details`](../src/Midnight/ContractDSL/Balance.agda) (positive,
+funded transfers and conservation), and
+[`PublicBoundary.query-input-details`](../src/Midnight/ContractDSL/PublicBoundary.agda)
+(a read-only membership query with its observed result and journal).
+
+For admission, `makeTx-admitted` packages same-view replay under explicit account
+identity and `Eligible ctx j` premises. `Eligible` means that every `required`
+condition in journal `j` holds in `ctx`; it does not assert freedom from ledger
+conflicts. `accepted-conditions` establishes `Eligible` for any accepted
+transaction's journal. These lemmas are generic in the communication scheme:
+recovery uses exact communication, while
+`PublicBoundary.chain-gate-admitted` and `chain-gate-required` use the deliberately
+non-binding simulator scheme. Recovery-specific readiness and authority facts
+remain local; exact journal specifications remain independent of evaluation.
 
 Some implementation choices deliberately keep this first proof small:
 
@@ -617,6 +639,15 @@ as an exact read followed by a replacement write would change that behaviour.
 Passport's ordinary `Uint` field increments, which actually read then write the
 field, must not be silently changed into blind counter operations.
 
+The account instance therefore exposes cell reads/writes and collection
+membership, lookup, insertion, removal and reset in `AccountLedger.Op`.
+`Custody.credit`, `bumpNonce`, `bumpRound`, and recovery's `clearPending` and
+`install` are ordinary `Program` helpers, not additional ledger primitives.
+Their constituent observations remain visible to replay. There is no layered
+`Semantics` interface: such a layer would need to preserve observations, failures
+and replay dependencies, not just final states. See the account instance's
+[correspondence limits](conformance-recovery.md#ledger-primitive-boundary).
+
 Each entry point has typed **caller inputs**, which can be private, and a
 private witness record. Compact exported circuit arguments are not automatically
 public. The statement separately designates public input projections and binds
@@ -690,6 +721,12 @@ no disclosure effect by itself. Do not emit a value merely because the Compact
 source wraps it in `disclose`. Ledger operations, explicit public outputs, and
 structured event logs have their own observations. Event encodings can be
 ordinary `PublicValue` data when their audience and ordering are specified.
+
+The executable DSL exposes `disclose : A → Program A`, defined as `pure`.
+Use it at the corresponding Compact annotations to retain source correspondence;
+it returns its argument without changing state, journal, or observation trace.
+It does not track private/public types or enforce information-flow rules, so no
+guarantee from Compact's disclosure checker follows from this operation.
 
 `atChain` records a condition, not a read of the client's clock. Conditions are
 data with decidable checking. The initial guards cover asserted inclusive time
@@ -889,6 +926,23 @@ verification.
 for the activation, owns `s`, and commits only the returned state. Other
 transactions cannot interleave inside this activation. The resource must not
 offer a separate unauthenticated operation for applying a raw journal.
+
+The executable [`Interpreter`](../src/Midnight/ContractDSL/Protocol.agda) also
+provides `Admissions : State → State → Set` for any contract, communication
+scheme and account identity. `done` is the empty trace; `next` records a context,
+transaction, verdict and an equation witnessing its actual `admission` result,
+followed by the remaining trace. These are traces of admission attempts:
+invalid proofs and stale certificates may appear as rejected steps, which leave
+state unchanged. Neither honest-wallet construction nor application-specific
+policies are required. Recovery instantiates this relation as
+`AccountRecovery.Chain.Admissions`; its `TracePolicy` is a separate theorem
+hypothesis, not part of the DSL's execution relation.
+
+The interpreter's `self` selects the account identity of locally built
+transactions. Admission checks the transaction's claimed identity against the
+supplied `Context.account`; the unrestricted trace does not impose a fixed
+account or monotone time. History properties needing either condition must
+state it as an environment premise.
 
 #### Constructing a Protocol from the programs
 

@@ -2,52 +2,82 @@
 
 ## Status and objective
 
-This document specifies the first experiment using the
-[contract specification DSL](contract-specification-dsl.md): recovery-driven
-replacement of account authority. It records a proposed model and proof plan,
-not an implemented Agda protocol or an established security theorem about the
-Passport contract.
+The intended shared account-recovery contract is
+[`Passport.AccountRecovery.contract`](../src/Passport/AccountRecovery.agda),
+using the [contract specification DSL](contract-specification-dsl.md).
+Its `Chain` instantiates the DSL's generic
+[`Interpreter.Admissions`](../src/Midnight/ContractDSL/Protocol.agda) traces;
+these unrestricted executions underlie the device-authority and recovery-execution theorems.
+All are checked under `--safe --without-K`; start at `src/Passport.agda`.
+The historical source attack, concrete stamped-map repair, exercised gate, and
+implementation assurance limits are recorded in
+[recovery assurance](conformance-recovery.md).
 
 The experiment compares an implementation-shaped account program with an intended
 authority-replacement specification. It must support both legitimate recovery
 and adversarial interleavings. A model that simply assumes that incrementing an
 epoch revokes every old device would hide the principal counterexample target.
 
-The property develops [P5′ in the security-properties document](security-properties.md#p5--recovery-driven-authority-replacement).
-That document distinguishes proposed obligations from existing mechanised
-accounting results. This experiment is not an extension of the balance-routing
-proof by assumption: it introduces concrete account-authority behaviour.
+This develops the **device-authority subset** of
+[P5′](security-properties.md#p5--recovery-driven-authority-replacement).
+It does not establish the entire concrete Passport property: authentication
+intent, concrete-model refinement, grant authority, resource replacement, and
+deployment remain separate obligations.
 
 ### Reference versions and evidence
 
-Use categorical-crypto's `protocol-rewrite` branch temporarily, with inspected
-reference `579b54e72d453fd6287f05f90a32b933b8474390`, and its existing concrete
-`UCSetup`. The DSL design records the relevant interfaces and assurance boundary.
+The original plan inspected categorical-crypto's `protocol-rewrite` reference
+`579b54e72d453fd6287f05f90a32b933b8474390`. Actual checks use this repository's
+current `flake.lock` and pagda environment, whose hashes are recorded by the
+gate; the checked environment identifies categorical-crypto
+`protocol-rewrite-437dca12`. The planning reference is not the build pin.
 
-The implementation reference is Passport commit
-`5d12798321d3daba37b1da90162ee1468daf38a6`, in particular:
+The source-review reference is Passport `main` commit
+`d3152081c35bb151d8fbf4fdfced0e23afa256a2`, inspected on 2026-10-14:
 
-- [Device authentication](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L830-L906).
-- [Device enrolment and future-epoch commentary](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L1264-L1344).
-- [Recovery-session publication](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L2650-L2738).
-- [Recovery submission, cancellation, and finalisation](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L2754-L2878).
+- [Device authentication](https://github.com/midnightntwrk/passport/blob/d3152081c35bb151d8fbf4fdfced0e23afa256a2/contract/contracts/account.compact#L839-L915).
+- [Device enrolment and future-epoch commentary](https://github.com/midnightntwrk/passport/blob/d3152081c35bb151d8fbf4fdfced0e23afa256a2/contract/contracts/account.compact#L1273-L1353).
+- [Recovery-session publication](https://github.com/midnightntwrk/passport/blob/d3152081c35bb151d8fbf4fdfced0e23afa256a2/contract/contracts/account.compact#L2689-L2780).
+- [Recovery submission, cancellation, and finalisation](https://github.com/midnightntwrk/passport/blob/d3152081c35bb151d8fbf4fdfced0e23afa256a2/contract/contracts/account.compact#L2796-L2920).
+
+The `account.compact` diff from the previous reference
+`5d12798321d3daba37b1da90162ee1468daf38a6` leaves these circuit bodies and
+their existing authentication/challenge helpers unchanged. Other changes add
+P-256/WebAuthn support and caller-bound grants, including `spec_version = 3`;
+this review does not extend the model to those features. This is a source-review
+pin update, not an execution against the new revision. Historical conformance
+runs and their implementation checkout remain pinned as recorded in the
+[conformance report](conformance-recovery.md).
 
 The sibling checkout inspected during planning was at `68bbde28`, which has no
 recovery circuit. It is not the recovery implementation reference. Pin the
 reference used for manual correspondence review rather than inferring behaviour
 from whichever revision happens to be checked out.
 
-Source inspection identifies a future-epoch counterexample candidate below. A
-small symbolic projection of the membership and epoch rules accepted the planted
-old-key entry after finalisation. This was neither Compact execution nor a
-mechanised proof; the proposed experiment must establish the full reachable trace
-and its observable consequence.
+The future-epoch counterexample below was subsequently executed against the
+historical Compact reference, not merely a symbolic projection. The current package
+adds a concrete repair and corrected-model trace proofs. See the
+[conformance report](conformance-recovery.md) for the distinct evidence levels.
 
 ## Scope and architecture boundary
 
 Model one account after bootstrap, at the account custody contract's authority
 boundary. The account identifier remains explicit so cross-account binding can
 be stated even though the main experiment involves one account.
+
+The supplied initial ledger is an arbitrary represented `AccountLedger.State`.
+The model does not construct bootstrap or impose a global state-validity or
+reachability predicate. This retains initially pending recovery and unsafe old
+device sets. Readiness guards determine positive execution; `Safe` is the
+initial premise for authority preservation, while accepted resetting finalisation
+needs only its existing safe-pending-successor premise. These conditional claims
+must not be read as a bootstrap invariant or a deployment theorem.
+
+Readiness is a model-level condition, not a complete concrete-input criterion:
+the submission `post_epoch` cast, ABI widths, curve interpretation and
+build-error/time-refusal distinction have explicit
+[correspondence limits](conformance-recovery.md#ledger-primitive-boundary).
+These are not hidden global state assumptions.
 
 Include recovery submission, cancellation, finalisation, recovery-session
 publication, device enrolment/removal, and ordinary device-authorised operations
@@ -78,9 +108,14 @@ The adversary may:
 - Construct its own transactions, replay requests, and use fresh signatures.
 - Choose transaction ordering and submit permissionless finalisation.
 
-For the authority-exclusion experiment, the legitimate recovery authority and the
-successor device key remain uncompromised. The successor does not subsequently
-authorise re-enrolment of the adversary. Compromise of the old device is allowed:
+For the authority-exclusion experiment, the legitimate recovery authority and
+successor device key remain uncompromised. The checked exclusion theorems assume
+[`TracePolicy`](../src/Conformance/RecoveryAuthorityDefinitions.agda) on the
+subsequent trace: every related certificate opening of every step, rejected ones
+included, satisfies `InputPolicy`. All enrolment entries exclude compromised-key
+encodings at every epoch/counter, regardless of which device authorised enrolment;
+all recovery submissions select uncompromised successors. This is a theorem
+hypothesis, not a contract-admission rule. Compromise of the old device is allowed:
 excluding it is the point of recovery.
 
 Initial cryptographic interpretation uses ideal authentication with explicit key
@@ -209,9 +244,26 @@ Enrolment accepts an opaque derived entry and requires live device authorisation
 It must permit future-epoch entries in the implementation-shaped model because
 the source does not enforce the client's current-epoch derivation obligation.
 
+[`doAddDevice`](../src/Conformance/Recovery.agda) makes the source order explicit:
+disclose the entry, check membership and assert absence, insert the entry, read
+the device count, then write its checked `Uint<8>` increment.
+[`AccountLedger`](../src/Conformance/AccountLedger.agda) supplies separate
+`insertDevice` and bounded `writeDeviceCount` operations, not a compound
+enrolment primitive. The model journal records membership, insertion, count read,
+and count write in that order. An overflowing count write aborts the operation;
+the tentative insertion is not committed.
+
+Recovery's explicit `disclose` calls use the DSL's
+[no-op annotation](contract-specification-dsl.md#2-the-small-effect-language).
+They preserve correspondence sites but provide no information-flow guarantee.
+
 Removal acts on a literal set entry, with the source's count and
 surviving-authorising-device checks. Do not turn removal of one entry into
 revocation of every entry associated with a key.
+Removal and successor installation also use primitive ledger operations, with
+explicit device-count writes. Application combinations are ordinary `Program`
+helpers; the remaining representation and correspondence limits are listed at
+the [ledger primitive boundary](conformance-recovery.md#ledger-primitive-boundary).
 
 Ordinary authorised operations roll a credential and advance the nonce without
 automatically cancelling pending recovery. Model representative operations by
@@ -220,7 +272,36 @@ rather than assuming that omitted operations cannot interfere.
 
 ## Intended properties
 
-These are proposed statements, not checked theorem names or results.
+The following are the intended obligations. Checked local results cover the
+subset below; statements about actual implementation history, cryptographic
+intent, or resource replacement are not silently promoted to theorems.
+
+| Checked route | Scope |
+|---|---|
+| `Conformance.RecoveryAuthority.accepted-recovery-trace-exclusion` | An actual accepted corrected finalisation resets an arbitrary old device set to a safe successor; every subsequent finite actual Interpreter admission trace satisfying the explicit `TracePolicy` excludes compromised current-epoch device entries at every counter |
+| `trace-compromised-call-impossible` | Under the same invariant/policy, an actual gated circuit using a compromised presented device key cannot evaluate successfully, even with a fresh signature |
+| `Conformance.RecoveryExecution.submission-provenance`, `finalisation-provenance` | Actual DSL evaluation implies submission guard/signature equations and exact resulting state/journal; finalisation enacts the recorded pending successor |
+| `submission-commits`, `finalisation-commits`, deadline theorems | Guard-premised actual transaction admission and chain-time obligations, including equality at the deadline |
+| Cancellation, stale/pending/replay rejection, `rejection-is-atomic` | Seam-gated cancellation clears pending state; stale bindings and immediate cancelled/finalised replays reject; rejected admissions preserve committed account state |
+| `positive-recovery`, `successor-authority`, `positive-rotation`, `rotation-commits` | Guard-premised non-vacuous recovery, recovered successor membership, and actual representative encryption-key rotation/admission |
+
+The authority invariant fixes a `Compromised` key set and assumes `deviceEntry`
+key separation across all epochs/counters. The unrestricted `Admissions` type
+contains no authority policy or wallet premise. The separate `TracePolicy`
+hypothesis in `RecoveryAuthorityDefinitions` requires `TransactionPolicy` at
+every step, including rejected transactions: all related certificate openings
+must obey `InputPolicy`. Opaque enrolments may not encode compromised keys at
+**any** epoch/counter; recovery submissions select uncompromised successor devices.
+This is a theorem hypothesis, not a condition on contract admission or a claim
+that a verifying signature proves human consent.
+The old device set may be compromised before the resetting finalisation.
+
+Proof definitions and assumptions are discoverable from the two advertised
+modules and their separate `Definitions`/`Proof` modules. Positive guard records
+expose signature equations, key-validity checks, finite-width bounds, and chain
+conditions rather than assuming successful evaluation. The rotation guard also
+records a concrete counter-width precondition which the existing natural-counter
+model does not enforce.
 
 ### Submission provenance and binding
 
@@ -228,6 +309,15 @@ Every recovery finalisation enacts a pending record created by an accepted
 submission authorised under the recovery authority current at that submission,
 with successor possession and the required account/key/state/time bindings.
 The record has not been cancelled or replaced in between.
+
+**Status: locally checked; whole-history occurrence provenance remains open.**
+`submission-provenance` exposes the signature-equation, binding and readiness
+guards of a successful local submission; `submission-commits` connects it to
+actual admission. `finalisation-provenance` exposes the consumed pending state.
+These [checked claims](../src/Conformance/RecoveryExecution.agda) do not yet
+prove that every finalisation in an arbitrary history traces to one particular
+uncancelled submission occurrence. Authentication intent/unforgeability remains
+an explicit external assumption, not a consequence of signature equations.
 
 ### Timing and cancellation safety
 
@@ -241,6 +331,14 @@ valid submission creates a separate obligation. After the deadline, cancel-first
 and finalise-first executions must both be accounted for, with later operations
 checked against the resulting state.
 
+**Status: local deadlines, cancellation and replay checked; arbitrary-history
+occurrence tracking remains open.** `submission-deadline`,
+`finalisation-deadline`, `cancellation-clears`,
+`cancelled-finalisation-rejected`, and the replay-rejection claims in
+[`RecoveryExecution`](../src/Conformance/RecoveryExecution.agda) cover the
+stated local guards/transitions. The gate executes cancel-first and
+finalise-first interleavings; that is not a proof about every later history.
+
 ### Authority replacement
 
 Immediately after finalisation, the successor is the sole device authority.
@@ -251,9 +349,15 @@ This is stronger than stale-signature rejection. An old adversarial device may
 know its key and sign a fresh request at the current nonce. The property must
 exclude that request through authority state, not through a no-forgery assumption.
 
-The source-faithful model is expected to refute this property through the
-future-epoch candidate below. Do not weaken the property or assume honest
-adversarial enrolment to make it hold.
+**Status: corrected-model trace exclusion checked under the explicit fixed
+compromise, TracePolicy and key-separation assumptions of
+[`RecoveryAuthority`](../src/Conformance/RecoveryAuthority.agda).**
+`accepted-recovery-trace-exclusion` starts with an actual admitted finalisation
+and covers subsequent accepted, rejected and stale-view admissions. The
+source-shaped implementation/model attack has been **executed**, including
+fresh post-finalisation old-key requests; a constructive Agda source-attack
+reachability theorem is not claimed. Do not weaken the property or assume
+honest adversarial enrolment to make it hold.
 
 ### Rejection preservation
 
@@ -261,6 +365,11 @@ Rejected submission, cancellation, finalisation, and device operations preserve
 committed account state. This includes tentative credential consumption or nonce
 increments performed before a later assertion fails. Reuse the DSL's atomicity
 result rather than assuming separate ad hoc rollback rules.
+
+**Status: checked at actual admission.** `rejection-is-atomic` in
+[`RecoveryExecution`](../src/Conformance/RecoveryExecution.agda) binds the
+existing DSL atomicity theorem. The harness also executes late-abort rollback
+cases; it does not replace the theorem with a simulator-only rollback rule.
 
 ### Positive execution
 
@@ -271,6 +380,14 @@ The successor can then authorise a representative operation.
 This prevents vacuous safety by universal rejection. It does not imply eventual
 recovery on every run, immediate spendability of assets, recovery of private coin
 data, or fairness of transaction inclusion.
+
+**Status: checked local evaluation and admitted execution, and exercised.**
+`positive-recovery`, `submission-commits`, `finalisation-commits`,
+`successor-authority`, and `rotation-commits` in
+[`RecoveryExecution`](../src/Conformance/RecoveryExecution.agda) establish a
+successful recovery and successor operation under explicit readiness,
+deadline, bounded-counter and signature-equation premises. The gate and
+repaired simulator execute positive successor operations as well.
 
 ## Reachable future-epoch counterexample
 
@@ -297,11 +414,12 @@ The proof must establish reachability through the actual modelled guards,
 transaction atomicity, and fresh nonce values. The informal source argument and
 previous symbolic projection do not discharge these obligations.
 
-Compare this with a corrected model that replaces the device-entry set with the
-successor entry at finalisation. This is a specification-level correction and
-comparison target, not a claim that clearing a Compact ledger set is available or
-cheap. A concrete repair may instead need an enrolment-generation/schema change;
-its implementation design and deployment are outside this experiment.
+The corrected model replaces the device-entry set with the successor singleton
+at finalisation. The concrete repair instead stamps opaque map entries with the
+contract-observed enrolment epoch; no Compact set-clearing operation is assumed.
+The current-generation authority projection connects the designs in executable
+conformance, but is not a checked refinement or a deployment/state-migration
+result. See [the repair boundary](conformance-recovery.md#concrete-repair-boundary).
 
 The corrected model must admit legitimate recovery and reject the same attack.
 It must not achieve exclusion by disabling all post-recovery operations.
@@ -372,18 +490,23 @@ the corresponding emulations and interface bindings are proved.
 2. Define the account state, authentication/chain interfaces, and source-shaped
    recovery and interfering operations. Record the manual source correspondence
    and abstraction assumptions.
-3. Encode the reachable future-epoch attack as an explicit strategy and establish
-   its accepted old-key operation and observable verdict.
-4. State the intended authority-replacement specification and prove its safety and
-   positive-execution obligations. Prove the corrected model satisfies the same
-   exclusion property the source-shaped model violates.
-5. Connect the local results to the existing protocol observation and UC machinery,
-   separating proved model results from conditional resource-replacement claims.
+3. **Executed; source reachability proof not claimed:** the future-epoch attack
+   has an accepted fresh old-key operation in the source simulator/model and
+   is rejected by the corrected model and repaired simulator.
+4. **Checked locally and at admission:** corrected-model trace authority
+   exclusion, readiness/provenance guards, deadlines, immediate cancellation,
+   replay rejection, atomicity and positive execution are checked in the
+   advertised modules. Whole-history submission-occurrence provenance remains
+   open; authentication/key-separation/compromise assumptions are explicit.
+5. **Actual-admission connection checked; UC/resource replacement open:** the
+   results use the existing protocol relation and admission/refinement
+   machinery. They do not prove a recovery UC replacement theorem, verified
+   compiler refinement, or grant-authority exclusion.
 
-The first substantive milestone is a reachable attack against the source-shaped
-model, rejection of that attack by the corrected/specification model, and a
-successful legitimate recovery in the same framework. There must be no newly
-postulated security result standing in for these proofs.
+The original first milestone's attack/rejection/positive-recovery executions
+are now recorded by the gate. Corrected-model safety and positive-execution
+theorems are independently checked in Agda; the source attack is executable
+evidence, not a newly postulated or advertised source reachability proof.
 
 Completion evidence should identify checked Agda modules, executed model
 scenarios, the implementation revision reviewed, and remaining cryptographic or
