@@ -12,12 +12,23 @@ advertised properties.
 [Agent instructions](docs/agents/workflow.md) define the mandatory review workflow;
 [reviewer instructions](docs/agents/readability-reviewer.md) define its execution.
 
+[Recovery assurance](docs/conformance-recovery.md) records the concrete repair,
+checked corrected-model device-authority results, and pinned executable gate.
+Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
+[`AccountRecovery.contract`](src/Passport/AccountRecovery.agda) →
+[`Interpreter.Admissions`](src/Midnight/ContractDSL/Protocol.agda) (instantiated as `AccountRecovery.Chain`) →
+the advertised execution and authority properties. This is the post-bootstrap
+recovery-relevant **shared account** slice, not a separate deployed contract.
+The [recovery specification](docs/recovery-specification.md) states the guard,
+initial-safety and separate trace-policy assumptions and remaining obligations.
+The [conformance plan](docs/conformance-testing-plan.md)
+and [historical custody spike](docs/conformance-spike.md) provide supporting context.
+
 ## References
 
 - **Main repository:** [midnightntwrk/passport](https://github.com/midnightntwrk/passport)
   + [Key passport properties](https://github.com/midnightntwrk/passport/blob/main/docs/plans/PROMISES.md)
   + [Security properties](docs/security-properties.md)
-  + [Modelling gaps and concrete account model](docs/modelling-gaps-and-account-model.md)
 - **Rendered documentation:** <https://input-output-hk.github.io/arc-passport-formal-spec/>
 
 ## Contract DSL

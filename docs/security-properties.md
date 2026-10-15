@@ -29,6 +29,21 @@ existence against an ideal functionality with an explicit permitted-leakage port
 
 ### P5' · Recovery-driven authority replacement
 
+*Recovery follows the rules you set.* Recovery must use the authority you
+configured and respect the cancellation window. This trusts your recovery
+quorum: the chain checks cryptographic authority, not your personal consent.
+This is P5's safety counterpart, not a requirement to invoke recovery for
+ordinary live-device-authorised encryption-key rotation.
+
+Submission must verify the **current recovery authority** and proof of
+successor-key possession, bound to the account, successor device key, successor
+recovery authority, current epoch/authorisation nonce, and signed time bound.
+Finalisation is permissionless enactment of that pending record after the veto
+window, provided it has not been cancelled. It requires no fresh signature.
+
+The full obligation below is schematic; the narrower checked subset is listed
+separately.
+
 ```agda
 RecoverySafety = ∀ {s} (t : Trace M s₀ s) {r} →
   FinalisesRecovery r t →
@@ -37,19 +52,30 @@ RecoverySafety = ∀ {s} (t : Trace M s₀ s) {r} →
   × VetoWindowElapsed r t × UncancelledPending r t
 ```
 
-Submission binds the current recovery authority, successor device and recovery
-keys, account, epoch/authorisation nonce, and signed time bound. Finalisation
-requires an uncancelled pending record and an elapsed veto window, not fresh
-signatures. Ordinary device-authorised encryption-key rotation is outside this
-property. Let `k` be the number of guardian shares required for reconstruction
-(`t+1` in the recovery protocol's threshold notation). Cryptographic authority
-does not certify human consent: a colluding quorum of `k` guardians can
-reconstruct it, and total device loss removes the veto.
+These are the two obligations corresponding to **I-5′.1** (submission) and
+**I-5′.2** (finalisation). The chain cannot certify an off-chain guardian
+exchange or the human owner's consent. With `n` guardians and threshold
+parameter `t`, reconstruction requires **t+1** shares; a colluding quorum can
+recover legitimately under the cryptographic gate. Human-consent safety
+therefore assumes the quorum is trusted and recovery authority is uncompromised.
+A live device can cancel; in total loss the veto window is only a delay/alarm.
 
-The [recovery specification](recovery-specification.md#intended-properties)
-develops a separate device-authority model and proof plan. Its scope excludes
-guardian reconstruction, grants, asset accounting, and prover privacy. It is
-not an established contract-security theorem.
+**Evidence:** [ordinary rotation](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L1220-L1247),
+[submission, cancellation, and finalisation](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L2754-L2878).
+**Checked/exercised subset:** the
+[recovery specification's checked routes](recovery-specification.md#intended-properties)
+give finite actual-admission trace exclusion for compromised **device keys**
+after corrected recovery, positive guard-premised recovery/rotation, local
+submission provenance and deadline/cancellation/replay/rejection results.
+[Recovery conformance](conformance-recovery.md) exercises the source attack and
+the stamped-map repair, including ordinary rotation, wrong/stale bindings,
+deadline equality, cancellation after the deadline, and permissionless finalise.
+
+The exclusion assumes key-entry separation, a fixed compromise set, an
+uncompromised successor, and no subsequent authorised enrolment of any compromised
+key encoding. Cryptographic intent/authentication, full cancelled-submission
+occurrence provenance, model-to-circuit refinement, grant-authority exclusion,
+resource replacement, and deployment are not established.
 
 ### P11 · Transaction safety
 
