@@ -8,6 +8,7 @@ open import Data.Maybe.Base
 open import Data.Nat.Base
 open import Data.Product.Base
 open import Data.Sum.Base
+open import Data.Sum.Properties using (inj₂-injective)
 open import Data.Unit.Base
 open import Function.Base
 open import Relation.Binary.PropositionalEquality
@@ -19,9 +20,9 @@ open import CategoricalCrypto.Protocol.Observe
 import Midnight.ContractDSL.Balance as Balance
 import Midnight.ContractDSL.BalanceLedger as BL
 import Midnight.ContractDSL.Program as Programs
-open import Midnight.ContractDSL.MidnightLedger hiding (prepare)
-open import Midnight.ContractDSL.MerkleFixture using (initial)
-open import Midnight.ContractDSL.Program midnight Assertion hiding (step)
+open import Midnight.ContractDSL.MidnightLedger as Ledger hiding (prepare)
+open import Midnight.ContractDSL.MerkleFixture using (initial; flags-read-only)
+open import Midnight.ContractDSL.Program midnight Assertion hiding (step; disclose)
 open import Midnight.ContractDSL.Smoke using () renaming (readDet to deterministic)
 open import Midnight.ContractDSL.Protocol midnight Assertion
 
@@ -53,6 +54,51 @@ boundaryContract = record
 
 module I = Interpreter boundaryContract (SimulatorCommunication.scheme boundaryContract) 0
 
+query-input-details : (b : Bool) (s : State) {t : State} {j : Journal} →
+  eval (Contract.body boundaryContract 0 queryInput b tt) s ≡ inj₂ (finished tt t j) →
+  t ≡ s × Σ Bool (λ observed →
+    Ledger.prepare (flagMember b) s ≡ inj₂ (observed , s) ×
+    j ≡ operated (flagMember b) observed ∷ [])
+query-input-details b s {t} {j} ev =
+  hoare-bind {P = λ u → u ≡ s}
+    {R = λ observed u js → u ≡ s ×
+      Ledger.prepare (flagMember b) s ≡ inj₂ (observed , s) ×
+      js ≡ operated (flagMember b) observed ∷ []}
+    {Q = λ _ u js → u ≡ s × Σ Bool (λ observed →
+      Ledger.prepare (flagMember b) s ≡ inj₂ (observed , s) ×
+      js ≡ operated (flagMember b) observed ∷ [])}
+    (perform (ledger (flagMember b))) (λ _ → pure tt)
+    (hoare-ledger (flagMember b) λ
+      { u observed v refl prepared →
+        let same = sym (cong proj₂ (inj₂-injective
+              (trans (sym (flags-read-only b s)) prepared))) in
+        same , subst (λ v → Ledger.prepare (flagMember b) s ≡ inj₂ (observed , v)) same prepared , refl })
+    (λ observed js → hoare-pure tt λ
+      { u (refl , observedAtSource , refl) → refl , observed , observedAtSource , refl })
+    s tt t j refl ev
+
+chain-gate-admitted : (ctx : Context) (s : State) (b : Bool) →
+  holds (timeAtLeast 1) ctx ≡ true → account ctx ≡ 0 →
+  I.admission ctx s
+    (I.makeTx chainGate b tt false s tt s (required (timeAtLeast 1) ∷ []) refl)
+    ≡ (s , I.accepted)
+chain-gate-admitted ctx s b mature same =
+  I.makeTx-admitted chainGate b tt false s tt s (required (timeAtLeast 1) ∷ [])
+    refl ctx (mature , tt) same
+
+chain-gate-required : (ctx : Context) (s : State) (acc : ℕ)
+  (artifact : Bool) (j : Journal)
+  (proof : I.Proof (I.statement acc chainGate tt artifact j)) {t : State} →
+  I.admission ctx s (I.transaction (I.statement acc chainGate tt artifact j) proof)
+    ≡ (t , I.accepted) →
+  holds (timeAtLeast 1) ctx ≡ true
+chain-gate-required ctx s acc artifact j proof admitted
+  with I.accepted-refinement ctx s
+    (I.transaction (I.statement acc chainGate tt artifact j) proof) admitted
+... | I.evidence view b tt tt opening , rel , refl =
+  proj₁ (I.accepted-conditions ctx s
+    (I.transaction (I.statement acc chainGate tt artifact (required (timeAtLeast 1) ∷ [])) proof) admitted)
+
 simulator-not-binding : ¬ CommunicationObligations.Binding boundaryContract (SimulatorCommunication.scheme boundaryContract)
 simulator-not-binding binding with proj₁ (proj₂ (binding false 0 silent false tt false 0 silent true tt false refl refl))
 ... | ()
@@ -61,6 +107,7 @@ PublicResult : Entry → Set
 PublicResult publicEcho = Bool
 PublicResult _ = ⊤
 
+-- This result-declassification policy is unrelated to Program's no-op disclose.
 disclose : (n : Entry) → Result n → PublicResult n
 disclose publicEcho b = b
 disclose silent _ = tt
