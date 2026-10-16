@@ -5,6 +5,7 @@
 # Agda build artifacts
 _build/
 *.agdai
+.pagda/
 
 # Editor cruft
 \#*\#
