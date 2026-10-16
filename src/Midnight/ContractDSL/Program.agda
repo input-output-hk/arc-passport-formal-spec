@@ -4,7 +4,6 @@ open import Midnight.ContractDSL.Ledger
 
 -- eval returns an error or a finished result, working state and ordered journal.
 -- replay checks that journal against the current state and time now.
--- Correctness statements: Properties.agda; executable example: Example.agda.
 module Midnight.ContractDSL.Program (L : Semantics) (Assertion : Set) where
 
 open import Data.Bool

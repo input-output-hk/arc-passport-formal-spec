@@ -19,5 +19,11 @@ Passport project.
   its time conditions hold. Implementations are in
   [`ReplayProof`](src/Midnight/ContractDSL/ReplayProof.agda).
 
-The [single-cell example](src/Midnight/ContractDSL/Example.agda) exercises reads,
-writes, stale-read rejection, error paths and time boundaries.
+## Contracts and admission
+
+- [`Contract`](src/Midnight/ContractDSL/Contract.agda): typed entry
+  points, evaluation-certified transactions, current-state admission and finite
+  admission traces.
+
+- [`AdmissionProperties`](src/Midnight/ContractDSL/AdmissionProperties.agda) proves
+  various correctness properties.
