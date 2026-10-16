@@ -7,3 +7,17 @@ Passport project.
   + [Key passport properties](https://github.com/midnightntwrk/passport/blob/main/docs/plans/PROMISES.md)
   + [Security properties](docs/security-properties.md)
 - **Rendered documentation:** <https://input-output-hk.github.io/arc-passport-formal-spec/>
+
+## Contract DSL
+
+- [`Ledger`](src/Midnight/ContractDSL/Ledger.agda): deterministic typed operations
+  and current-state replay that checks each recorded result.
+- [`Program`](src/Midnight/ContractDSL/Program.agda): sequential programs, assertions,
+  explicit publication events, deferred time conditions, evaluation and ordered replay.
+- [`Properties`](src/Midnight/ContractDSL/Properties.agda): successful replay
+  agrees with re-evaluation; successful evaluation replays on its own view when
+  its time conditions hold. Implementations are in
+  [`ReplayProof`](src/Midnight/ContractDSL/ReplayProof.agda).
+
+The [single-cell example](src/Midnight/ContractDSL/Example.agda) exercises reads,
+writes, stale-read rejection, error paths and time boundaries.
