@@ -11,11 +11,13 @@ open import Data.Maybe
 open import Data.Nat
 open import Data.Product
 open import Data.Sum
+open import Function
 open import Relation.Binary.PropositionalEquality
 open import Relation.Nullary
 
 open Semantics L
 open import Midnight.ContractDSL.Program L Assertion
+open import Midnight.ContractDSL.Hoare L Assertion
 open Contract C
 open Transaction
 import Midnight.ContractDSL.Properties L Assertion as Replay
@@ -45,3 +47,23 @@ rejection-atomic now s t tx eq with target tx ≟ self
 ... | refl = refl
 rejection-atomic now s t tx eq | yes _ with replay now (journal (execution tx)) s | eq
 ... | nothing | refl = refl
+
+-- `I` is an invariant of `C`
+Preserves : (State → Set) → Set
+Preserves I = ∀ entry input → Hoare I (body self entry input) (onSuccess (I ∘ working))
+
+admit-preserves : {I : State → Set} → Preserves I →
+  ∀ {s t v} (now : ℕ) (tx : Transaction) →
+  admit now s tx ≡ (t , v) → I s → I t
+admit-preserves {I} preserves {s} {t} {accepted} now tx admitted initial =
+  subst (onSuccess (λ r → I (working r)))
+    (proj₂ (accepted-execution now s t tx admitted))
+    (preserves (entry tx) (input tx) s initial)
+admit-preserves {I} preserves {s} {t} {rejected} now tx admitted initial =
+  subst I (sym (rejection-atomic now s t tx admitted)) initial
+
+admissions-preserve : {I : State → Set} → Preserves I →
+  ∀ {s t} → Admissions s t → I s → I t
+admissions-preserve preserves done initial = initial
+admissions-preserve preserves (next now tx v admitted rest) initial =
+  admissions-preserve preserves rest (admit-preserves preserves now tx admitted initial)

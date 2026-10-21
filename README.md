@@ -17,6 +17,9 @@ Passport project.
 - [`Properties`](src/Midnight/ContractDSL/Properties.agda): successful replay
   agrees with re-evaluation; successful evaluation replays on its own view when
   its time conditions hold.
+- [`Hoare`](src/Midnight/ContractDSL/Hoare.agda): outcome predicates covering
+  success and rejection, with rules for pure results, assertions, ledger operations
+  and sequencing, and lifting through successful replay.
 - [`Contract`](src/Midnight/ContractDSL/Contract.agda): typed entry
   points, evaluation-certified transactions, current-state admission and finite
   admission traces.
