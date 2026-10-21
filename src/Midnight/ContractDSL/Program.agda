@@ -14,6 +14,7 @@ open import Data.Product
 open import Data.Sum
 open import Data.Unit
 open import Relation.Binary.PropositionalEquality
+open import Function
 
 open Semantics L
 open Execution L
@@ -99,6 +100,37 @@ eval (step (require false err) k) s = inj₁ (assertionError err)
 eval (step (require true err) k) s = eval (k tt) s
 eval (step (publish v) k) s = prefix (published v) (eval (k tt) s)
 eval (step (atChain c) k) s = prefix (required c) (eval (k tt) s)
+
+prefixJournal : Journal → Outcome A → Outcome A
+prefixJournal js (inj₁ err) = inj₁ err
+prefixJournal js (inj₂ (finished a s es)) = inj₂ (finished a s (js ++ es))
+
+finishBind : Outcome A → (A → State → Outcome B) → Outcome B
+finishBind (inj₁ e) f = inj₁ e
+finishBind (inj₂ (finished a s j)) f = prefixJournal j (f a s)
+
+prefix-bind : (e : Event) (r : Outcome A) (f : A → State → Outcome B) →
+  finishBind (prefix e r) f ≡ prefix e (finishBind r f)
+prefix-bind e (inj₁ err) f = refl
+prefix-bind e (inj₂ (finished a s j)) f with f a s
+... | inj₁ err = refl
+... | inj₂ r = refl
+
+eval-bind : (p : Program A) (f : A → Program B) (s : State) →
+  eval (p >>= f) s ≡ finishBind (eval p s) (eval ∘ f)
+eval-bind (pure a) f s with eval (f a) s
+... | inj₁ err = refl
+... | inj₂ r = refl
+eval-bind (step (ledger o) k) f s with prepare o s
+... | inj₁ err = refl
+... | inj₂ (x , t) = trans (cong (prefix (operated o x)) (eval-bind (k x) f t))
+  (sym (prefix-bind (operated o x) (eval (k x) t) (λ a → eval (f a))))
+eval-bind (step (require false err) k) f s = refl
+eval-bind (step (require true err) k) f s = eval-bind (k tt) f s
+eval-bind (step (publish v) k) f s = trans (cong (prefix (published v)) (eval-bind (k tt) f s))
+  (sym (prefix-bind (published v) (eval (k tt) s) (λ a → eval (f a))))
+eval-bind (step (atChain c) k) f s = trans (cong (prefix (required c)) (eval-bind (k tt) f s))
+  (sym (prefix-bind (required c) (eval (k tt) s) (λ a → eval (f a))))
 
 --------------------------------------------------------------------------------
 -- Journals

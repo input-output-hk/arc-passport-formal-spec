@@ -6,6 +6,7 @@ module Passport where
 import Midnight.ContractDSL.Ledger
 import Midnight.ContractDSL.Program
 import Midnight.ContractDSL.Properties
+import Midnight.ContractDSL.Hoare
 
 -- Contracts and current-state admission
 import Midnight.ContractDSL.Contract
