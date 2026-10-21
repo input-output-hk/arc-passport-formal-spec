@@ -11,6 +11,7 @@ import Midnight.ContractDSL.Hoare
 -- Contracts and current-state admission
 import Midnight.ContractDSL.Contract
 import Midnight.ContractDSL.AdmissionProperties
+import Midnight.ContractDSL.Protocol
 
 -- Schema-derived storage
 import Midnight.ContractDSL.Storage
