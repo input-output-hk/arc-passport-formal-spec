@@ -10,3 +10,7 @@ import Midnight.ContractDSL.Properties
 -- Contracts and current-state admission
 import Midnight.ContractDSL.Contract
 import Midnight.ContractDSL.AdmissionProperties
+
+-- Schema-derived storage
+import Midnight.ContractDSL.Storage
+import Midnight.ContractDSL.Storage.Properties
