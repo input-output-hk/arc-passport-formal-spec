@@ -2,6 +2,7 @@
 
 module Midnight.ContractDSL.BalanceLedger where
 
+open import Class.DecEq using (DecEq; DecEq-⊤)
 open import Data.Nat.Base
 open import Data.Nat.Properties using (_≟_; _≤?_; +-assoc; +-comm; m∸n+n≡m; m+[n∸m]≡n)
 open import Data.Product.Base
@@ -47,9 +48,9 @@ move-conserves bob n (balances l r) enough = trans
 data Kind : Set where
   amount unit : Kind
 
-El : Kind → Set
-El amount = ℕ
-El unit = ⊤
+Res : Kind → Set
+Res amount = ℕ
+Res unit = ⊤
 
 data Op : Kind → Set where
   readBalance : Account → Op amount
@@ -61,17 +62,17 @@ data Failure : Set where
 data Assertion : Set where
   emptyTransfer : Assertion
 
-prepare : {k : Kind} → Op k → State → Failure ⊎ (El k × State)
+prepare : {k : Kind} → Op k → State → Failure ⊎ (Res k × State)
 prepare (readBalance a) s = inj₂ (balanceOf a s , s)
 prepare (transfer a n) s with n ≤? balanceOf a s
 ... | no _ = inj₁ insufficientFunds
 ... | yes _ = inj₂ (tt , move a n s)
 
-resultEq : {k : Kind} → Op k → (x y : El k) → Dec (x ≡ y)
-resultEq (readBalance a) = _≟_
-resultEq (transfer a n) tt tt = yes refl
+resultEquality : (k : Kind) → DecEq (Res k)
+resultEquality amount = record { _≟_ = _≟_ }
+resultEquality unit = DecEq-⊤
 
 balanceLedger : Semantics
 balanceLedger = record
-  { State = State ; Kind = Kind ; El = El ; Op = Op ; Failure = Failure
-  ; prepare = prepare ; resultEq = resultEq }
+  { State = State ; Kind = Kind ; Res = Res ; Op = Op ; Failure = λ _ → Failure
+  ; prepare = prepare ; DecEq-Res = λ {k} → resultEquality k }

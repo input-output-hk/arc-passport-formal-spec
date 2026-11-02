@@ -19,5 +19,8 @@ main = run (putStrLn
    "actual ledger query argument reveals supplied Boolean: " ++ render queryBoundary ++ "\n" ++
    "publication/query trace survives assertion failure: " ++ render abortBoundary ++ "\n" ++
    "explicit public result policy preserves Boolean results: " ++ render publicResultBoundary ++ "\n" ++
-   "generic admission accepts valid and rejects premature chain condition: " ++ render admissionBoundary ++ "\n" ++
-   "public operation/assertion failures remain distinct: " ++ render operationFailureBoundary))
+   "certified admission accepts valid and rejects premature chain condition: " ++ render admissionBoundary ++ "\n" ++
+   "public operation/assertion failures remain distinct: " ++ render operationFailureBoundary ++ "\n" ++
+   "proof resources can refuse certification and verification: " ++ render proofResourceBoundary ++ "\n" ++
+   "wrong targets and invalid envelopes are rejected: " ++ render transportBoundary ++ "\n" ++
+   "occupied and absent drafts remain explicit: " ++ render draftBoundary))

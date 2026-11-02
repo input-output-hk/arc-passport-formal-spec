@@ -2,6 +2,7 @@
 
 module Midnight.ContractDSL.MidnightLedger where
 
+open import Class.DecEq using (DecEq; DecEq-⊤)
 open import Data.Bool.Base hiding (_≤_; _<_)
 open import Data.Bool.Properties using () renaming (_≟_ to boolEq)
 open import Data.Maybe.Base
@@ -19,11 +20,11 @@ open import Midnight.ContractDSL.SymbolicDigest
 data Kind : Set where
   boolean natural digest trivial : Kind
 
-El : Kind → Set
-El boolean = Bool
-El natural = ℕ
-El digest = Digest
-El trivial = ⊤
+Res : Kind → Set
+Res boolean = Bool
+Res natural = ℕ
+Res digest = Digest
+Res trivial = ⊤
 
 data Assertion : Set where
   uninitialised unauthorised assertionFailed : Assertion
@@ -45,17 +46,17 @@ record State : Set where
         falseFlag trueFlag : Bool
 open State public
 
-getField : {k : Kind} → FieldRef k → State → El k
+getField : {k : Kind} → FieldRef k → State → Res k
 getField lockState = locked
 getField lockAuthority = authority
 getField lockValue = value
 
-putField : {k : Kind} → FieldRef k → El k → State → State
+putField : {k : Kind} → FieldRef k → Res k → State → State
 putField lockState b s = record s { locked = b }
 putField lockAuthority a s = record s { authority = a }
 putField lockValue v s = record s { value = v }
 
-fieldEq : {k : Kind} → (f : FieldRef k) → (x y : El k) → Dec (x ≡ y)
+fieldEq : {k : Kind} → (f : FieldRef k) → (x y : Res k) → Dec (x ≡ y)
 fieldEq lockState = boolEq
 fieldEq lockAuthority = digestEq
 fieldEq lockValue = _≟_
@@ -85,7 +86,7 @@ data CounterId : Set where
 
 data Op : Kind → Set where
   readField : {k : Kind} → FieldRef k → Op k
-  writeField : {k : Kind} → FieldRef k → El k → Op trivial
+  writeField : {k : Kind} → FieldRef k → Res k → Op trivial
   readRound : CounterId → Op natural
   incrementCounter : CounterId → ℕ → Op trivial
   counterLessThan : CounterId → ℕ → Op boolean
@@ -94,18 +95,13 @@ data Op : Kind → Set where
   flagMember : Bool → Op boolean
   updateFlags : Bool → Bool → Op trivial
 
-resultEq : {k : Kind} → Op k → (x y : El k) → Dec (x ≡ y)
-resultEq (readField f) = fieldEq f
-resultEq (writeField f v) tt tt = yes refl
-resultEq (readRound c) = _≟_
-resultEq (incrementCounter c d) tt tt = yes refl
-resultEq (counterLessThan c b) = boolEq
-resultEq (checkRoot _) = boolEq
-resultEq (updateRoot _) tt tt = yes refl
-resultEq (flagMember _) = boolEq
-resultEq (updateFlags _ _) tt tt = yes refl
+resultEquality : (k : Kind) → DecEq (Res k)
+resultEquality boolean = record { _≟_ = boolEq }
+resultEquality natural = record { _≟_ = _≟_ }
+resultEquality digest = record { _≟_ = digestEq }
+resultEquality trivial = DecEq-⊤
 
-prepare : {k : Kind} → Op k → State → Failure ⊎ (El k × State)
+prepare : {k : Kind} → Op k → State → Failure ⊎ (Res k × State)
 prepare (readField f) s = inj₂ (getField f s , s)
 prepare (writeField f v) s = inj₂ (tt , putField f v s)
 prepare (readRound lockRound) s = inj₂ (round s , s)
@@ -121,10 +117,10 @@ prepare (updateFlags f t) s = inj₂ (tt , record s { falseFlag = f ; trueFlag =
 
 midnight : Semantics
 midnight = record
-  { State = State ; Kind = Kind ; El = El ; Op = Op ; Failure = Failure
-  ; prepare = prepare ; resultEq = resultEq }
+  { State = State ; Kind = Kind ; Res = Res ; Op = Op ; Failure = λ _ → Failure
+  ; prepare = prepare ; DecEq-Res = λ {k} → resultEquality k }
 
-put-get : {k : Kind} (f : FieldRef k) (x : El k) (s : State) →
+put-get : {k : Kind} (f : FieldRef k) (x : Res k) (s : State) →
   getField f (putField f x s) ≡ x
 put-get lockState x s = refl
 put-get lockAuthority x s = refl

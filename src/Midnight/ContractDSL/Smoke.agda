@@ -33,13 +33,13 @@ runDet P st (ask q k) with readDet (step P st q)
 runDet P st (coin μ k) = nothing
 
 validSmoke : Maybe Bool
-validSmoke = runDet assembled (init assembled) validStrategy
+validSmoke = runDet clientSystem (init clientSystem) validStrategy
 
 wrongKeySmoke : Maybe Bool
-wrongKeySmoke = runDet assembled (init assembled) wrongKeyStrategy
+wrongKeySmoke = runDet clientSystem (init clientSystem) wrongKeyStrategy
 
 staleSmoke : Maybe Bool
-staleSmoke = runDet assembled (init assembled) staleStrategy
+staleSmoke = runDet clientSystem (init clientSystem) staleStrategy
 
 valid-smoke : validSmoke ≡ just true
 valid-smoke = refl
@@ -51,16 +51,16 @@ stale-smoke : staleSmoke ≡ just true
 stale-smoke = refl
 
 balanceSmoke : Maybe Bool
-balanceSmoke = runDet Balance.assembled (init Balance.assembled) Balance.successStrategy
+balanceSmoke = runDet Balance.clientSystem (init Balance.clientSystem) Balance.successStrategy
 
 balanceErrorSmoke : Maybe Bool
-balanceErrorSmoke = runDet Balance.assembled (init Balance.assembled) Balance.errorStrategy
+balanceErrorSmoke = runDet Balance.clientSystem (init Balance.clientSystem) Balance.errorStrategy
 
 balanceFundsSmoke : Maybe Bool
-balanceFundsSmoke = runDet Balance.assembled (init Balance.assembled) Balance.fundsStrategy
+balanceFundsSmoke = runDet Balance.clientSystem (init Balance.clientSystem) Balance.fundsStrategy
 
 mutableRootSmoke : Maybe Bool
-mutableRootSmoke = runDet MerkleState.assembled (init MerkleState.assembled) MerkleState.rootChangeStrategy
+mutableRootSmoke = runDet MerkleState.clientSystem (init MerkleState.clientSystem) MerkleState.rootChangeStrategy
 
 balance-smoke : balanceSmoke ≡ just true
 balance-smoke = refl

@@ -1,8 +1,5 @@
 {-# OPTIONS --safe --without-K --guardedness #-}
 
--- Exhaustive joint-tree normalization: warm check ~25 s with -M16G -H1G.
--- The canonical 3 GiB heap exhausts on the unified interpreter's private drafts.
-
 module Midnight.ContractDSL.PrivacySmoke where
 
 open import Data.Bool.Base hiding (_≤_; _<_)
@@ -24,6 +21,7 @@ open import ProbabilisticLogic.Distribution.RationalDist.Expectation
 open import ProbabilisticLogic.Distribution.RationalDist.Partial
 open import ProbabilisticLogic.Distribution.Uniform
 open import CategoricalCrypto.Iface
+open import CategoricalCrypto.Machines.Run
 open import ProbabilisticLogic.Dp.Advantage
 open import CategoricalCrypto.Protocol
 open import CategoricalCrypto.Protocol.Machine
@@ -36,8 +34,7 @@ open import Midnight.ContractDSL.Privacy
 open import Midnight.ContractDSL.Program midnight Assertion hiding (step)
 
 open I using (accepted; rejected)
-open Prepared
-open I.Statement
+open PublicDraft
 open View
 
 singleTag : Bool → Dist⊥ Bool
@@ -55,8 +52,8 @@ tag (operated (flagMember b) _ ∷ xs) = just b
 tag (_ ∷ xs) = tag xs
 
 attack : View → Bool
-attack v with tag (effects (publicClaim (firstDraft v))) |
-  tag (effects (publicClaim (secondDraft v)))
+attack v with tag (I.Claim.journal (publicClaim (firstDraft v))) |
+  tag (I.Claim.journal (publicClaim (secondDraft v)))
 ... | just x | just y = x xor y
 ... | _ | _ = false
 
