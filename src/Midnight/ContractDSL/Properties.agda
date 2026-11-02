@@ -25,3 +25,8 @@ replay-refinement = Proof.replay-refinement
 same-view-replay : (p : Program A) (now : ℕ) {s t : State} {a : A} {j : Journal} →
   eval p s ≡ inj₂ (finished a t j) → Eligible now j → replay now j s ≡ just t
 same-view-replay = Proof.same-view-replay
+
+-- Acceptance establishes every recorded chain-time condition.
+replay-eligible : (now : ℕ) (j : Journal) (s : State) {t : State} →
+  replay now j s ≡ just t → Eligible now j
+replay-eligible = Proof.replay-eligible

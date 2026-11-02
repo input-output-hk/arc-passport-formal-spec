@@ -67,3 +67,19 @@ hoare-bind p f first failed rest s pre rewrite eval-bind p f s
   with eval p s | first s pre
 ... | inj₁ err | held = failed err held
 ... | inj₂ (finished a u js) | held = rest a js u held
+
+bind-success : (p : Program A) (f : A → Program B) (s : State)
+  {b : B} {t : State} {j : Journal} →
+  eval (p >>= f) s ≡ inj₂ (finished b t j) →
+  Σ (Finished A) (λ r → Σ Journal (λ es →
+    eval p s ≡ inj₂ r ×
+    eval (f (result r)) (working r) ≡ inj₂ (finished b t es) ×
+    j ≡ journal r ++ es))
+bind-success p f s eq with eval p s in first | trans (sym (eval-bind p f s)) eq
+... | inj₁ err | ()
+... | inj₂ (finished a u js) | joined with eval (f a) u in second
+...   | inj₁ err with joined
+...     | ()
+bind-success p f s eq | inj₂ (finished a u js) | joined | inj₂ (finished b t es)
+  with joined
+... | refl = finished a u js , es , refl , second , refl
