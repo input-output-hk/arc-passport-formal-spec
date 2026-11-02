@@ -24,6 +24,7 @@ in
 
     categorical-crypto = prev.categorical-crypto.overrideAttrs (_: {
       version = "protocol-rewrite-f280e04f";
+      GHCRTS = "-M8G -H1G";
       src = pkgs.fetchFromGitHub {
         owner = "input-output-hk";
         repo = "categorical-crypto";
