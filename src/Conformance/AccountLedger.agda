@@ -10,6 +10,7 @@ open import Conformance.Primitives
 -- The constant recovery_version is projected away.
 module Conformance.AccountLedger (P : Primitives) where
 
+open import Class.DecEq using (DecEq)
 open import Data.Bool.Base
 open import Data.Bool.ListAction using (all; any)
 open import Data.Bool.Properties using () renaming (_≟_ to _≟ᵇ_)
@@ -99,12 +100,12 @@ s ≈ᵇ t = (round s ≡ᵇ round t) ∧ (authNonce s ≡ᵇ authNonce t) ∧ (
 data Kind : Set where
   count flag unit point bytes : Kind
 
-El : Kind → Set
-El count = ℕ
-El flag = Bool
-El unit = ⊤
-El point = Point
-El bytes = Bytes32
+Res : Kind → Set
+Res count = ℕ
+Res flag = Bool
+Res unit = ⊤
+Res point = Point
+Res bytes = Bytes32
 
 data Op : Kind → Set where
   readNonce readRound readEpoch readDeviceCount readVetoWindow readNotBefore : Op count
@@ -123,19 +124,19 @@ data Op : Kind → Set where
   insertPhi1 insertPhi2 insertPhi3 insertPhi4 : ℕ → Op unit
   writeWrap : Bytes64 → Op unit
 
-data Failure : Set where
-  overflow absent : Failure
+data Failure (k : Kind) : Set where
+  overflow absent : Failure k
 
-bounded : ℕ → ℕ → (ℕ → State) → Failure ⊎ (⊤ × State)
+bounded : ℕ → ℕ → (ℕ → State) → Failure unit ⊎ (⊤ × State)
 bounded bound n next = if n <ᵇ bound then inj₂ (tt , next n) else inj₁ overflow
 
-read : {A : Set} → A → State → Failure ⊎ (A × State)
+read : {k : Kind} {A : Set} → A → State → Failure k ⊎ (A × State)
 read x s = inj₂ (x , s)
 
-write : State → Failure ⊎ (⊤ × State)
+write : State → Failure unit ⊎ (⊤ × State)
 write s = inj₂ (tt , s)
 
-prepare : {k : Kind} → Op k → State → Failure ⊎ (El k × State)
+prepare : {k : Kind} → Op k → State → Failure k ⊎ (Res k × State)
 prepare readNonce s = read (authNonce s) s
 prepare readRound s = read (round s) s
 prepare readEpoch s = read (deviceEpoch s) s
@@ -186,17 +187,20 @@ prepare (writeWrap w) s = write (record s { wrap = w })
 data Finalisation : Set where
   sourceShaped corrected : Finalisation
 
-decEl : (k : Kind) → DecidableEquality (El k)
-decEl count = _≟_
-decEl flag = _≟ᵇ_
-decEl unit tt tt = yes refl
-decEl point = _≟ᴾ_
-decEl bytes = _≟ᴮ_
+decRes : (k : Kind) → DecidableEquality (Res k)
+decRes count = _≟_
+decRes flag = _≟ᵇ_
+decRes unit tt tt = yes refl
+decRes point = _≟ᴾ_
+decRes bytes = _≟ᴮ_
+
+resultEquality : (k : Kind) → DecEq (Res k)
+resultEquality k = record { _≟_ = decRes k }
 
 accountLedger : Semantics
 accountLedger = record
-  { State = State ; Kind = Kind ; El = El ; Op = Op ; Failure = Failure
-  ; prepare = prepare ; resultEq = λ {k} _ → decEl k }
+  { State = State ; Kind = Kind ; Res = Res ; Op = Op ; Failure = Failure
+  ; prepare = prepare ; DecEq-Res = λ {k} → resultEquality k }
 
 ------------------------------------------------------------------------
 -- Decidable equality of operations (journal comparison)
@@ -352,5 +356,5 @@ decOp {k} = via encode (decode k) decode-encode
   (ΣP.≡-dec _≟_ (List.≡-dec (⊎P.≡-dec _≟_ (⊎P.≡-dec _≟ᴮ_ (⊎P.≡-dec _≟ᴾ_ _≟ᵂ_)))))
 
 -- An operation together with its result, the payload of a journal `operated` event.
-decOperated : DecidableEquality (Σ Kind λ k → Op k × El k)
-decOperated = ΣP.≡-dec _≟ᴷ_ λ {k} → ΣP.≡-dec decOp (decEl k)
+decOperated : DecidableEquality (Σ Kind λ k → Op k × Res k)
+decOperated = ΣP.≡-dec _≟ᴷ_ λ {k} → ΣP.≡-dec decOp (decRes k)

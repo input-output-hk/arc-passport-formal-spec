@@ -6,7 +6,7 @@ The intended shared account-recovery contract is
 [`Passport.AccountRecovery.contract`](../src/Passport/AccountRecovery.agda),
 using the [contract specification DSL](contract-specification-dsl.md).
 Its `Chain` instantiates the DSL's generic
-[`Interpreter.Admissions`](../src/Midnight/ContractDSL/Protocol.agda) traces;
+[`Contract.Admissions`](../src/Midnight/ContractDSL/Contract.agda) traces;
 these unrestricted executions underlie the device-authority and recovery-execution theorems.
 All are checked under `--safe --without-K`; start at `src/Passport.agda`.
 The historical source attack, concrete stamped-map repair, exercised gate, and
@@ -27,10 +27,10 @@ deployment remain separate obligations.
 ### Reference versions and evidence
 
 The original plan inspected categorical-crypto's `protocol-rewrite` reference
-`579b54e72d453fd6287f05f90a32b933b8474390`. Actual checks use this repository's
-current `flake.lock` and pagda environment, whose hashes are recorded by the
-gate; the checked environment identifies categorical-crypto
-`protocol-rewrite-437dca12`. The planning reference is not the build pin.
+`579b54e72d453fd6287f05f90a32b933b8474390`. Historical gate evidence used
+`protocol-rewrite-437dca12`. The rebase onto `main` retains its
+`protocol-rewrite-f280e04f` dependency in `pagda.nix`; historical gate locks
+do not certify this updated source or dependency snapshot.
 
 The source-review reference is Passport `main` commit
 `d3152081c35bb151d8fbf4fdfced0e23afa256a2`, inspected on 2026-10-14:
@@ -111,7 +111,7 @@ The adversary may:
 For the authority-exclusion experiment, the legitimate recovery authority and
 successor device key remain uncompromised. The checked exclusion theorems assume
 [`TracePolicy`](../src/Conformance/RecoveryAuthorityDefinitions.agda) on the
-subsequent trace: every related certificate opening of every step, rejected ones
+subsequent trace: the certified input of every step, rejected ones
 included, satisfies `InputPolicy`. All enrolment entries exclude compromised-key
 encodings at every epoch/counter, regardless of which device authorised enrolment;
 all recovery submissions select uncompromised successors. This is a theorem
@@ -278,7 +278,7 @@ intent, or resource replacement are not silently promoted to theorems.
 
 | Checked route | Scope |
 |---|---|
-| `Conformance.RecoveryAuthority.accepted-recovery-trace-exclusion` | An actual accepted corrected finalisation resets an arbitrary old device set to a safe successor; every subsequent finite actual Interpreter admission trace satisfying the explicit `TracePolicy` excludes compromised current-epoch device entries at every counter |
+| `Conformance.RecoveryAuthority.accepted-recovery-trace-exclusion` | An actual accepted corrected finalisation resets an arbitrary old device set to a safe successor; every subsequent finite actual contract admission trace satisfying the explicit `TracePolicy` excludes compromised current-epoch device entries at every counter |
 | `trace-compromised-call-impossible` | Under the same invariant/policy, an actual gated circuit using a compromised presented device key cannot evaluate successfully, even with a fresh signature |
 | `Conformance.RecoveryExecution.submission-provenance`, `finalisation-provenance` | Actual DSL evaluation implies submission guard/signature equations and exact resulting state/journal; finalisation enacts the recorded pending successor |
 | `submission-commits`, `finalisation-commits`, deadline theorems | Guard-premised actual transaction admission and chain-time obligations, including equality at the deadline |
@@ -289,7 +289,7 @@ The authority invariant fixes a `Compromised` key set and assumes `deviceEntry`
 key separation across all epochs/counters. The unrestricted `Admissions` type
 contains no authority policy or wallet premise. The separate `TracePolicy`
 hypothesis in `RecoveryAuthorityDefinitions` requires `TransactionPolicy` at
-every step, including rejected transactions: all related certificate openings
+every step, including rejected transactions: each certified input
 must obey `InputPolicy`. Opaque enrolments may not encode compromised keys at
 **any** epoch/counter; recovery submissions select uncompromised successor devices.
 This is a theorem hypothesis, not a condition on contract admission or a claim
@@ -426,10 +426,10 @@ It must not achieve exclusion by disabling all post-recovery operations.
 
 ## Protocol and observation boundary
 
-Implement account operations in the DSL and reuse its interpreter into
-`Protocol`. Compose with ideal authentication/ZK and blockchain resources first.
-These resources and their assumptions must be explicit; the upstream signature
-example is not a completed off-the-shelf signature realisation proof.
+Account operations use the DSL's `Contract` API and its `Protocol.toProtocol`
+adapter. A future resource-replacement theorem would additionally compose
+explicit authentication/ZK and blockchain resources; those assumptions are not
+supplied by certified transactions or by the upstream signature example.
 
 Use categorical-crypto's existing concrete `UCSetup`. Follow the distinction in
 `ChimericLedger.Property` and `Transfer` between local/internal properties and

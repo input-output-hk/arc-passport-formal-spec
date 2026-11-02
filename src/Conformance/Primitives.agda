@@ -1,7 +1,7 @@
 {-# OPTIONS --safe --without-K #-}
 
--- The cryptographic surface the account model consumes, abstract here and bound to the
--- implementation's compiled pure circuits / compact-runtime in Conformance.Main.
+-- The cryptographic surface the account model consumes, abstract here and bound
+-- to the shared primitive backend in Conformance.Oracle; Main is transport only.
 -- Argument orders follow `contract/contracts/account.compact` at Passport `5d12798`;
 -- every challenge takes `(self, sig_r, pk, …, nonce, grind)` except `challengeSubmit`.
 module Conformance.Primitives where

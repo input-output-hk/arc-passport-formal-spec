@@ -26,6 +26,9 @@ open import Conformance.RecoveryExecutionDefinitions P self
 import Passport.AccountRecovery P self as Account
 open Account using (module Chain)
 open import Midnight.ContractDSL.Program accountLedger Assertion
+open import Midnight.ContractDSL.Hoare accountLedger Assertion
+open import Midnight.ContractDSL.Properties accountLedger Assertion
+import Midnight.ContractDSL.AdmissionProperties accountLedger Assertion Account.contract as Admission
 
 open Primitives P
 open SubmitArgs
@@ -204,24 +207,22 @@ finalisation-eligible : ∀ ctx s → holds (timeAtLeast (pendingNotBefore s)) c
 finalisation-eligible ctx s mature = mature , tt
 
 submission-admission : ∀ now s a (ready : SubmissionReady s a) →
-  holds (timeAtMost (nowUpper a)) (context 0 now) ≡ true →
-  Chain.admission (context 0 now) s
-    (Chain.makeTx Account.recoverSubmit a tt 0 s tt (submissionState s a)
-      (submissionJournal s a) (submission-positive s a ready)) ≡ (submissionState s a , Chain.accepted)
+  holds (timeAtMost (nowUpper a)) now ≡ true →
+  Chain.admit s (Chain.submit now
+    (submissionTransaction s a (submission-positive s a ready))) ≡ (submissionState s a , Chain.accepted)
 submission-admission now s a ready onTime =
-  Chain.makeTx-admitted Account.recoverSubmit a tt 0 s tt (submissionState s a)
-    (submissionJournal s a) (submission-positive s a ready) (context 0 now)
-    (submission-eligible (context 0 now) s a onTime) refl
+  Admission.Eligible⇒admit
+    (Chain.submit now (submissionTransaction s a (submission-positive s a ready)))
+    refl (submission-eligible now s a onTime)
 
 finalisation-admission : ∀ now s (ready : FinalisationReady s) →
-  holds (timeAtLeast (pendingNotBefore s)) (context 0 now) ≡ true →
-  Chain.admission (context 0 now) s
-    (Chain.makeTx Account.recoverFinalise tt tt 0 s tt (finalisationState s)
-      (finalisationJournal s) (finalisation-positive s ready)) ≡ (finalisationState s , Chain.accepted)
+  holds (timeAtLeast (pendingNotBefore s)) now ≡ true →
+  Chain.admit s (Chain.submit now
+    (finalisationTransaction s (finalisation-positive s ready))) ≡ (finalisationState s , Chain.accepted)
 finalisation-admission now s ready mature =
-  Chain.makeTx-admitted Account.recoverFinalise tt tt 0 s tt (finalisationState s)
-    (finalisationJournal s) (finalisation-positive s ready) (context 0 now)
-    (finalisation-eligible (context 0 now) s mature) refl
+  Admission.Eligible⇒admit
+    (Chain.submit now (finalisationTransaction s (finalisation-positive s ready)))
+    refl (finalisation-eligible now s mature)
 
 
 submission-deadline : ∀ ctx s a t → replay ctx (submissionJournal s a) s ≡ just t →
@@ -232,27 +233,30 @@ finalisation-deadline : ∀ ctx s t → replay ctx (finalisationJournal s) s ≡
   holds (timeAtLeast (pendingNotBefore s)) ctx ≡ true
 finalisation-deadline ctx s t rp = proj₁ (replay-eligible ctx (finalisationJournal s) s rp)
 
-accepted-submission-deadline : ∀ ctx tx {s t}
-  (isSubmission : Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverSubmit) →
-  Chain.admission ctx s tx ≡ (t , Chain.accepted) →
+accepted-submission-deadline : ∀ now tx {s t}
+  (isSubmission : Chain.Transaction.entry tx ≡ Account.recoverSubmit) →
+  Chain.admit s (Chain.submit now tx) ≡ (t , Chain.accepted) →
   holds (timeAtMost (nowUpper
-    (subst Account.Input isSubmission (Chain.Statement.publicInputs (Chain.Tx.claim tx))))) ctx ≡ true
-accepted-submission-deadline ctx tx@(Chain.transaction
-  (Chain.statement acc Account.recoverSubmit a binding j) proof) {s} refl admitted
-  with Chain.accepted-refinement ctx s tx admitted
-... | e , (refl , relation) , evaluated with submission-shape {s = s} {a = a} evaluated
-...   | shape , refl = proj₁ (Chain.accepted-conditions ctx s tx admitted)
+    (subst Account.Input isSubmission (Chain.Transaction.input tx)))) now ≡ true
+accepted-submission-deadline now tx {s} {t} isSubmission admitted
+  with Chain.Transaction.entry tx | Chain.Transaction.input tx | isSubmission |
+    proj₂ (Admission.accepted-execution (Chain.submit now tx) s t admitted)
+... | Account.recoverSubmit | a | refl | evaluated
+  with submission-shape {s = s} {a = a} evaluated
+... | shape , journalShape = proj₁ (subst (Eligible now) journalShape
+  (Admission.accepted-eligible (Chain.submit now tx) s t admitted))
 
-accepted-finalisation-deadline : ∀ ctx tx {s t}
-  (isFinalisation : Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverFinalise) →
-  Chain.admission ctx s tx ≡ (t , Chain.accepted) →
-  holds (timeAtLeast (pendingNotBefore s)) ctx ≡ true
-accepted-finalisation-deadline ctx tx@(Chain.transaction
-  (Chain.statement acc Account.recoverFinalise tt binding j) proof) {s} refl admitted
-  with Chain.accepted-refinement ctx s tx admitted
-... | Chain.evidence view tt tt tt opening , relation , evaluated
+accepted-finalisation-deadline : ∀ now tx {s t}
+  (isFinalisation : Chain.Transaction.entry tx ≡ Account.recoverFinalise) →
+  Chain.admit s (Chain.submit now tx) ≡ (t , Chain.accepted) →
+  holds (timeAtLeast (pendingNotBefore s)) now ≡ true
+accepted-finalisation-deadline now tx {s} {t} isFinalisation admitted
+  with Chain.Transaction.entry tx | Chain.Transaction.input tx | isFinalisation |
+    proj₂ (Admission.accepted-execution (Chain.submit now tx) s t admitted)
+... | Account.recoverFinalise | tt | refl | evaluated
   with finalisation-shape evaluated
-...   | shape , refl = proj₁ (Chain.accepted-conditions ctx s tx admitted)
+... | shape , journalShape = proj₁ (subst (Eligible now) journalShape
+  (Admission.accepted-eligible (Chain.submit now tx) s t admitted))
 
 ------------------------------------------------------------------------
 -- Cancellation and guard rejection
@@ -343,13 +347,11 @@ rotation-positive s k a ready
     RotationReady.nonceFits ready | RotationReady.roundFits ready = refl
 
 rotation-admission : ∀ now s k a (ready : RotationReady s k a) →
-  Chain.admission (context 0 now) s
-    (Chain.makeTx (Account.jubjub Account.rotateEncKey) (k , a) tt 0 s tt (rotationState s k a)
-      (rotationJournal s k a) (rotation-positive s k a ready)) ≡ (rotationState s k a , Chain.accepted)
+  Chain.admit s (Chain.submit now
+    (rotationTransaction s k a (rotation-positive s k a ready))) ≡ (rotationState s k a , Chain.accepted)
 rotation-admission now s k a ready =
-  Chain.makeTx-admitted (Account.jubjub Account.rotateEncKey) (k , a) tt 0 s tt
-    (rotationState s k a) (rotationJournal s k a) (rotation-positive s k a ready)
-    (context 0 now) tt refl
+  Admission.Eligible⇒admit
+    (Chain.submit now (rotationTransaction s k a (rotation-positive s k a ready))) refl tt
 
-rejection-is-atomic : ∀ ctx s tx {t} → Chain.admission ctx s tx ≡ (t , Chain.rejected) → t ≡ s
-rejection-is-atomic ctx s tx = Chain.rejection-atomic ctx s tx (Chain.verified tx)
+rejection-is-atomic : ∀ now s tx {t} → Chain.admit s (Chain.submit now tx) ≡ (t , Chain.rejected) → t ≡ s
+rejection-is-atomic now s tx {t} = Admission.rejection-atomic (Chain.submit now tx) s t

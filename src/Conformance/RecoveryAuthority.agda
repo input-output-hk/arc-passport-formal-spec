@@ -3,23 +3,11 @@
 open import Conformance.Primitives
 import Conformance.RecoveryAuthorityDefinitions
 
--- Reading route: Passport.AccountRecovery.contract, then unrestricted
--- Chain.Admissions from the generic Interpreter. RecoveryAuthorityDefinitions exposes
--- the compromise set, collision boundary, and separate TracePolicy hypothesis.
--- Proofs: RecoveryAuthorityProof; this file presents their explicit types.
--- Model prerequisites: the account dispatch, Recovery circuits, Custody seam and
--- AccountLedger.State/prepare. Program.eval builds a working state and journal;
--- Protocol.Interpreter.admission verifies the certificate and atomically
--- replays its journal against the current ledger, enforcing chain conditions.
--- Eval-only reset claims are distinct from the accepted-finalisation claims.
--- This covers corrected replacement, not sourceShaped or grant authority.
--- Compromised is fixed throughout the trace: subsequent compromise of a successor
--- is outside this claim. Signature unforgeability is NOT proved or needed to
--- reject an absent compromised key; treating an accepted honest-key call as an
--- honest party's intent additionally needs authentication/unforgeability.
--- Atomic ordered replay and chain-time enforcement are those of ContractDSL's
--- Interpreter, not a theorem about a deployed chain. The stamped concrete map's
--- current-epoch projection is a correspondence obligation, not a checked refinement.
+-- Corrected recovery excludes a fixed compromise set under key separation and
+-- the separate TracePolicy hypothesis in RecoveryAuthorityDefinitions.
+-- Evaluation-only resets and accepted-finalisation trace claims are distinct.
+-- Proofs: RecoveryAuthorityProof; evaluation/admission boundary: RecoveryExecution.
+-- Assumptions and limits: docs/conformance-recovery.md#checked-formal-scope.
 module Conformance.RecoveryAuthority (P : Primitives)
   (self : Primitives.Bytes32 P) (Compromised : Primitives.Point P → Set)
   (separation : Conformance.RecoveryAuthorityDefinitions.KeySeparation P self Compromised) where
@@ -76,16 +64,16 @@ recovery-trace-exclusion : ∀ {s recovered t result journal} → EntrySafe (pen
   ∀ pk counter → Compromised pk → ¬ DeviceAuthority t pk counter
 recovery-trace-exclusion = Proof.recovery-trace-exclusion
 
-accepted-finalisation-resets-authority : ∀ ctx tx {s recovered} →
-  Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverFinalise →
+accepted-finalisation-resets-authority : ∀ now tx {s recovered} →
+  Chain.Transaction.entry tx ≡ Account.recoverFinalise →
   EntrySafe (pendingEntry s) →
-  Chain.admission ctx s tx ≡ (recovered , Chain.accepted) → Safe recovered
+  Chain.admit s (Chain.submit now tx) ≡ (recovered , Chain.accepted) → Safe recovered
 accepted-finalisation-resets-authority = Proof.accepted-finalisation-reset
 
-accepted-recovery-trace-exclusion : ∀ ctx tx {s recovered t} →
-  Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverFinalise →
+accepted-recovery-trace-exclusion : ∀ now tx {s recovered t} →
+  Chain.Transaction.entry tx ≡ Account.recoverFinalise →
   EntrySafe (pendingEntry s) →
-  Chain.admission ctx s tx ≡ (recovered , Chain.accepted) →
+  Chain.admit s (Chain.submit now tx) ≡ (recovered , Chain.accepted) →
   (trace : Admissions recovered t) → TracePolicy trace →
   ∀ pk counter → Compromised pk → ¬ DeviceAuthority t pk counter
 accepted-recovery-trace-exclusion = Proof.accepted-recovery-trace-exclusion

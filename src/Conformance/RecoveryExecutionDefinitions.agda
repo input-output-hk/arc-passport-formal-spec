@@ -8,7 +8,9 @@ module Conformance.RecoveryExecutionDefinitions (P : Primitives)
 open import Data.Bool.Base
 open import Data.List.Base
 open import Data.Nat.Base
+open import Data.Product.Base
 open import Data.Unit.Base
+open import Data.Sum.Base
 open import Relation.Binary.PropositionalEquality
 open import Relation.Nullary
 
@@ -16,6 +18,8 @@ open import Conformance.AccountLedger P
 open import Conformance.Custody P self
 open import Conformance.Recovery P self
 open import Midnight.ContractDSL.Program accountLedger Assertion
+import Passport.AccountRecovery P self as Account
+open Account using (module Chain)
 
 open Primitives P
 open SubmitArgs
@@ -125,3 +129,27 @@ record RotationReady (s : State) (k : Bytes32) (a : Authorisation) : Set where
         -- The current model increments the use counter over naturals; this
         -- extra concrete-width precondition is not a model-enforced assertion.
         counterFits : (suc (useCounter a) <ᵇ uint64) ≡ true
+
+submissionTransaction : ∀ s a →
+  eval (submitRecovery a) s ≡ inj₂ (finished tt (submissionState s a) (submissionJournal s a)) →
+  Chain.Transaction
+submissionTransaction s a evaluated = record
+  { target = Chain.self ; entry = Account.recoverSubmit ; input = a ; view = s
+  ; execution = finished tt (submissionState s a) (submissionJournal s a)
+  ; certified = evaluated }
+
+finalisationTransaction : ∀ s →
+  eval (finaliseRecovery corrected) s ≡ inj₂ (finished tt (finalisationState s) (finalisationJournal s)) →
+  Chain.Transaction
+finalisationTransaction s evaluated = record
+  { target = Chain.self ; entry = Account.recoverFinalise ; input = tt ; view = s
+  ; execution = finished tt (finalisationState s) (finalisationJournal s)
+  ; certified = evaluated }
+
+rotationTransaction : ∀ s k a →
+  eval (Account.circuit corrected (Account.jubjub Account.rotateEncKey) (k , a)) s ≡
+    inj₂ (finished tt (rotationState s k a) (rotationJournal s k a)) → Chain.Transaction
+rotationTransaction s k a evaluated = record
+  { target = Chain.self ; entry = Account.jubjub Account.rotateEncKey ; input = k , a ; view = s
+  ; execution = finished tt (rotationState s k a) (rotationJournal s k a)
+  ; certified = evaluated }
