@@ -22,19 +22,24 @@ open import Relation.Nullary.Decidable using (does; toWitness)
 import CategoricalCrypto.Iface
 open import CategoricalCrypto.Protocol using (St; init; ret)
 import CategoricalCrypto.Protocol as Upstream
+import CategoricalCrypto.Protocol.Reachability as Reach
 open import CategoricalCrypto.Strategy using (Strat; ask; out)
 open import Midnight.ContractDSL.FixtureLedger
 open import Midnight.ContractDSL.Ledger
 open import Midnight.ContractDSL.MidnightLedger
 open import Midnight.ContractDSL.Program midnight Assertion
-open import Midnight.ContractDSL.Protocol midnight Assertion
+import Midnight.ContractDSL.Contract as Contracts
+import Midnight.ContractDSL.Protocol as Protocols
+import Midnight.ContractDSL.AdmissionProperties as Admissions
+import Midnight.ContractDSL.Experiment as Experiments
+import Midnight.ContractDSL.Experiment.Properties as ExperimentProperties
 open import Midnight.ContractDSL.SymbolicDigest
 open Execution midnight
 
-read : {k : Kind} → FieldRef k → Program (El k)
+read : {k : Kind} → FieldRef k → Program (Res k)
 read f = perform (ledger (readField f))
 
-write : {k : Kind} → FieldRef k → El k → Program ⊤
+write : {k : Kind} → FieldRef k → Res k → Program ⊤
 write f v = perform (ledger (writeField f v))
 
 increment : ℕ → Program ⊤
@@ -105,39 +110,44 @@ data Entry : Set where
   clearEntry setEntry : Entry
 
 Input : Entry → Set
-Input clearEntry = ⊤
-Input setEntry = Σ ℕ (λ v → v ≤ maxCounter)
+Input clearEntry = ℕ
+Input setEntry = Σ ℕ (λ v → v ≤ maxCounter) × ℕ
 
-lockContract : Contract
+lockContract : Contracts.Contract midnight Assertion
 lockContract = record
-  { Name = Entry ; Input = Input ; PublicArgs = λ _ → ⊤ ; Result = λ _ → ⊤
-  ; Witness = λ _ _ → ℕ ; publicArgs = λ _ _ → tt
-  ; body = λ self → λ { clearEntry tt sk → clear sk
-                      ; setEntry (v , bound) sk → setLock v sk } }
+  { self = 7 ; EntryPoint = Entry ; Input = Input ; Result = λ _ → ⊤
+  ; body = λ self → λ { clearEntry sk → clear sk
+                      ; setEntry ((v , bound) , sk) → setLock v sk } }
 
-module Lock = Interpreter lockContract (ExactCommunication.scheme lockContract) 7
-open Lock
+module C = Contracts.Contract lockContract
+module P = Protocols midnight Assertion lockContract
+module A = Admissions midnight Assertion lockContract
+open C hiding (Input)
+module Client = Experiments.Runtime midnight Assertion lockContract (λ _ → ⊤) (λ _ _ → tt)
+module ClientProof = ExperimentProperties midnight Assertion lockContract (λ _ → ⊤) (λ _ _ → tt)
 
 RoundBound : State → Set
 RoundBound s = round s ≤ maxCounter
 
-lock-preserves : Preserves RoundBound
-lock-preserves acc clearEntry tt sk s tt t j pre eq
-  with clear-safety sk s eq
+lock-preserves : A.Preserves RoundBound
+lock-preserves clearEntry sk s pre with eval (clear sk) s in evaluated
+... | inj₁ err = tt
+... | inj₂ (finished tt t j) with clear-safety sk s evaluated
 ... | _ , _ , n , added , refl = proj₂ (proj₂ (addCounter-spec (round s) 1 added))
-lock-preserves acc setEntry (v , bound) sk s tt t j pre eq =
-  subst (λ n → n ≤ maxCounter) (sym (set-round v sk s eq)) pre
+lock-preserves setEntry ((v , bound) , sk) s pre with eval (setLock v sk) s in evaluated
+... | inj₁ err = tt
+... | inj₂ (finished tt t j) =
+  subst (λ n → n ≤ maxCounter) (sym (set-round v sk s evaluated)) pre
 
-accepted-clear : (ctx : Context) (s : State) (tx : Tx) {t : State} →
-  Statement.name (Tx.claim tx) ≡ clearEntry → admission ctx s tx ≡ (t , accepted) →
+accepted-clear : (now : ℕ) (s : State) (tx : Transaction) {t : State} →
+  Transaction.entry tx ≡ clearEntry → admit s (submit now tx) ≡ (t , accepted) →
   Σ ℕ (ClearPost s t)
-accepted-clear ctx s (transaction (statement acc clearEntry pa binding j) proof) refl admitted
-  with accepted-refinement ctx s (transaction (statement acc clearEntry pa binding j) proof) admitted
-... | evidence view tt sk tt opening , rel , ev = sk , clear-safety sk s ev
-accepted-clear ctx s (transaction (statement acc setEntry pa binding j) proof) () admitted
+accepted-clear now s tx@(record { entry = clearEntry ; input = sk }) refl admitted =
+  sk , clear-safety sk s (proj₂ (A.accepted-execution (submit now tx) s _ admitted))
+accepted-clear now s (record { entry = setEntry }) () admitted
 
-ctx : Context
-ctx = context 7 0
+slot : ℕ
+slot = 0
 
 initial : State
 initial = fixtureState true (publicKey 0 42) 99 0
@@ -158,23 +168,25 @@ clearJournal = operated (readField lockState) true ∷
 valid-eval : eval (clear 42) initial ≡ inj₂ (finished tt afterClear clearJournal)
 valid-eval = refl
 
-validTx : Tx
-validTx = makeTx clearEntry tt 42 0 initial tt afterClear clearJournal valid-eval
+validTx : Transaction
+validTx = record
+  { target = 7 ; entry = clearEntry ; input = 42 ; view = initial
+  ; execution = finished tt afterClear clearJournal ; certified = valid-eval }
 
-valid-proof : verified validTx ≡ true
-valid-proof = refl
-
-valid-admission : admission ctx initial validTx ≡ (afterClear , accepted)
+valid-admission : admit initial (submit slot validTx) ≡ (afterClear , accepted)
 valid-admission = refl
 
 wrong-key : eval (clear 43) initial ≡ inj₁ (assertionError unauthorised)
 wrong-key = refl
+rawWrong : Client.Envelope
+rawWrong = Client.invalidEnvelope
 
-rawWrong : Tx
-rawWrong = transaction (makeStatement clearEntry tt tt 0 clearJournal) invalid
-
-raw-rejected : admission ctx initial rawWrong ≡ (initial , rejected)
+raw-rejected :
+  Upstream.step (Client.system slot initial) (init (Client.system slot initial))
+    (Client.sendEnvelope rawWrong) ≡
+  ret ((nothing , initial , tt) , Client.transportInvalid)
 raw-rejected = refl
+
 
 setJournal : Journal
 setJournal = operated (readField lockState) false ∷
@@ -186,17 +198,19 @@ setJournal = operated (readField lockState) false ∷
 set-eval : eval (setLock 100 42) afterClear ≡ inj₂ (finished tt afterSet setJournal)
 set-eval = refl
 
-setTx : Tx
-setTx = makeTx setEntry (100 , ≤-step100) 42 1 afterClear tt afterSet setJournal set-eval
+setTx : Transaction
+setTx = record
+  { target = 7 ; entry = setEntry ; input = (100 , ≤-step100) , 42 ; view = afterClear
+  ; execution = finished tt afterSet setJournal ; certified = set-eval }
   where
   ≤-step100 : 100 ≤ maxCounter
   ≤-step100 = toWitness {a? = 100 ≤? maxCounter} tt
 
-intervening-set : admission ctx afterClear setTx ≡ (afterSet , accepted)
+intervening-set : admit afterClear (submit slot setTx) ≡ (afterSet , accepted)
 intervening-set = refl
 
 -- State is SET again, but the old exact counter dependency is still stale.
-stale-rejected : admission ctx afterSet validTx ≡ (afterSet , rejected)
+stale-rejected : admit afterSet (submit slot validTx) ≡ (afterSet , rejected)
 stale-rejected = refl
 
 zeroCounter : State
@@ -211,8 +225,8 @@ twoCounter = record zeroCounter { round = 2 }
 blindJournal : Journal
 blindJournal = operated (incrementCounter lockRound 1) tt ∷ []
 
-two-blind-increments : replay ctx blindJournal zeroCounter ≡ just oneCounter ×
-  replay ctx blindJournal oneCounter ≡ just twoCounter
+two-blind-increments : replay slot blindJournal zeroCounter ≡ just oneCounter ×
+  replay slot blindJournal oneCounter ≡ just twoCounter
 two-blind-increments = refl , refl
 
 predicate-rebases : apply (counterLessThan lockRound 3) true twoCounter ≡ just twoCounter
@@ -221,7 +235,7 @@ predicate-rebases = refl
 exact-read-conflicts : apply (readRound lockRound) 0 oneCounter ≡ nothing
 exact-read-conflicts = refl
 
-read-after-write : replay ctx
+read-after-write : replay slot
   (operated (writeField lockValue 100) tt ∷ operated (readField lockValue) 100 ∷ []) initial
   ≡ just (record initial { value = 100 })
 read-after-write = refl
@@ -232,31 +246,44 @@ lateFailure = write lockState false >> increment 1 >> assert false assertionFail
 late-failure : eval lateFailure initial ≡ inj₁ (assertionError assertionFailed)
 late-failure = refl
 
-time-rejected : replay ctx (operated (writeField lockState false) tt ∷ required (timeAtLeast 1) ∷ []) initial ≡ nothing
+time-rejected : replay slot (operated (writeField lockState false) tt ∷ required (timeAtLeast 1) ∷ []) initial ≡ nothing
 time-rejected = refl
 
-assembled : Upstream.Protocol CategoricalCrypto.Iface.unitᴵ ClientIf
-assembled = system ctx initial
+assembled : Upstream.Protocol CategoricalCrypto.Iface.unitᴵ P.ContractIf
+assembled = P.toProtocol initial
 
-assembled-round-safety : ∀ {st} → Reachable ctx initial st → RoundBound (chainState st)
-assembled-round-safety = reachable-invariant lock-preserves ctx initial z≤n
+assembled-round-safety : ∀ {s} → Reach.Reachable assembled s → RoundBound s
+assembled-round-safety reached =
+  A.admissions-preserve lock-preserves (P.reachable-admissions initial reached) z≤n
 
-validStrategy : Strat ClientQuery ClientAnswer
-validStrategy = ask (build clearEntry tt 42 0) λ
-  { (built clearEntry tt _ _) → ask submit λ { (submitted accepted) → out true ; _ → out false }
+clientSystem : Upstream.Protocol CategoricalCrypto.Iface.unitᴵ Client.ClientIf
+clientSystem = Client.system slot initial
+client-system-round-safety : ∀ {st} → Reach.Reachable clientSystem st →
+  RoundBound (Client.ledgerState st)
+client-system-round-safety reached =
+  A.admissions-preserve lock-preserves (ClientProof.system-admissions slot initial reached) z≤n
+
+
+validStrategy : Strat Client.ClientQuery Client.ClientAnswer
+validStrategy = ask (Client.prepareDraft clearEntry 42 Client.neutralArtifact) λ
+  { (Client.preparedAnswer clearEntry tt _ _) → ask Client.submitDraft λ
+      { (Client.admitted accepted) → out true ; _ → out false }
   ; _ → out false }
 
-wrongKeyStrategy : Strat ClientQuery ClientAnswer
-wrongKeyStrategy = ask (build clearEntry tt 43 0) λ
-  { (buildFailed (assertionError unauthorised) _) → ask (submitOther rawWrong) λ
-      { (submitted rejected) → out true ; _ → out false }
+wrongKeyStrategy : Strat Client.ClientQuery Client.ClientAnswer
+wrongKeyStrategy = ask (Client.prepareDraft clearEntry 43 Client.neutralArtifact) λ
+  { (Client.failed (assertionError unauthorised) _) → ask (Client.sendEnvelope rawWrong) λ
+      { Client.transportInvalid → out true ; _ → out false }
   ; _ → out false }
 
-staleStrategy : Strat ClientQuery ClientAnswer
-staleStrategy = ask (build clearEntry tt 42 0) λ
-  { (built clearEntry tt _ _) → ask (submitOther validTx) λ
-      { (submitted accepted) → ask (submitOther setTx) λ
-          { (submitted accepted) → ask submit λ { (submitted rejected) → out true ; _ → out false }
+staleStrategy : Strat Client.ClientQuery Client.ClientAnswer
+staleStrategy = ask (Client.prepareDraft clearEntry 42 Client.neutralArtifact) λ
+  { (Client.preparedAnswer clearEntry tt _ _) →
+      ask (Client.sendEnvelope (Client.certifiedEnvelope (Client.certifiedDraft validTx Client.neutralArtifact))) λ
+      { (Client.submitted accepted) →
+          ask (Client.sendEnvelope (Client.certifiedEnvelope (Client.certifiedDraft setTx Client.neutralArtifact))) λ
+          { (Client.submitted accepted) → ask Client.submitDraft λ
+              { (Client.admitted rejected) → out true ; _ → out false }
           ; _ → out false }
       ; _ → out false }
   ; _ → out false }

@@ -17,6 +17,7 @@ open import Midnight.ContractDSL.FixtureLedger
 open import Midnight.ContractDSL.MidnightLedger
 open import Midnight.ContractDSL.Merkle
 open import Midnight.ContractDSL.Program midnight Assertion
+open import Midnight.ContractDSL.Properties midnight Assertion
 open import Midnight.ContractDSL.SymbolicDigest
 
 -- Publicly known example members, NOT the circuit's input domain.
@@ -109,15 +110,15 @@ flags-read-only : (tag : Bool) (s : State) →
 flags-read-only false s = refl
 flags-read-only true s = refl
 
-eligible : (v : Variant) (i : Item) (mask : Bool) (ctx : Context) →
-  Eligible ctx (programJournal v i mask)
-eligible secure i mask ctx = tt
-eligible insecure i mask ctx = tt
+eligible : (v : Variant) (i : Item) (mask : Bool) (now : ℕ) →
+  Eligible now (programJournal v i mask)
+eligible secure i mask now = tt
+eligible insecure i mask now = tt
 
-admitted : (v : Variant) (i : Item) (mask : Bool) (s : State) (ctx : Context) →
-  Compatible s → replay ctx (programJournal v i mask) s ≡ just s
-admitted v i mask s ctx compatible = same-view-replay (program v i mask) ctx
-  (successful v i mask s compatible) (eligible v i mask ctx)
+admitted : (v : Variant) (i : Item) (mask : Bool) (s : State) (now : ℕ) →
+  Compatible s → replay now (programJournal v i mask) s ≡ just s
+admitted v i mask s now compatible = same-view-replay (program v i mask) now
+  (successful v i mask s compatible) (eligible v i mask now)
 
 second : Bool → Item
 second false = b

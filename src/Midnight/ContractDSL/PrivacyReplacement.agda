@@ -7,6 +7,7 @@ open import Data.Product.Base
 open import Data.Unit.Base
 open import Level
 
+open import CategoricalCrypto.Abstract2
 open import CategoricalCrypto.Iface
 open import CategoricalCrypto.Protocol using (Protocol; _∘ᵖ_)
 open import CategoricalCrypto.Protocol.Machine
@@ -17,6 +18,7 @@ open import CategoricalCrypto.UC.Model.Seal
 import CategoricalCrypto.UC.Robust as Robust
 open import CategoricalCrypto.UCSetup
 open import Midnight.ContractDSL.Ledger
+import Midnight.ContractDSL.Contract as Contracts
 import Midnight.ContractDSL.Program as Programs
 import Midnight.ContractDSL.Protocol as DSL
 
@@ -26,6 +28,7 @@ module Transfer
   {o ℓ e o′ ℓ′ e′ cs ℓs : Level}
   (setup : UCSetup o ℓ e o′ ℓ′ e′ cs ℓs) where
 
+  open AbstractUC setup
   open Robust setup
 
   module Replacement {A B : 𝒞.Obj} {X Y : ℐ.Obj}
@@ -96,7 +99,7 @@ module Transfer
       idealSystem = context ∙ ideal
 
       system-emulates : realSystem ≤UC idealSystem
-      system-emulates = UC-compose emulates (≤UC-refl context)
+      system-emulates = UC-compose emulates ≤UC-refl
 
       transfer : {p d : Level} (P : Predℰ A p) (Adm : Admissible C d) →
         ((s : (Y ⊗₀ Z) ℐ.⇒ (X ⊗₀ Z)) → ClosedUnder Adm s) →
@@ -104,8 +107,8 @@ module Transfer
       transfer P Adm closed = uc-preserves P Adm closed system-emulates
 
       transfer-unrestricted : {p : Level} (P : Predℰ A p) →
-        Robust P ⊤ᴬ idealSystem → Robust P ⊤ᴬ realSystem
-      transfer-unrestricted P = transfer P ⊤ᴬ (λ _ _ _ _ → tt)
+        Robust P (λ _ _ _ → ⊤) idealSystem → Robust P (λ _ _ _ → ⊤) realSystem
+      transfer-unrestricted P = transfer P (λ _ _ _ → ⊤) (λ _ _ _ _ → tt)
 
 module ExactTransfer = Transfer Exact.StdSetup
 module ComputationalTransfer = Transfer Family.Canonicalᴺ.StdSetup
@@ -142,10 +145,16 @@ module ForProtocol {S B : Iface} (context : Protocol S B) where
           (procᵒ-∘ (morphism context) (morphism backend))))))
 
 module ForContract (L : Semantics) (Assertion : Set)
-  (contract : DSL.Contract L Assertion)
-  (communication : DSL.CommunicationScheme L Assertion contract) (self : ℕ) =
-  ForProtocol (DSL.Interpreter.toProtocol L Assertion contract communication self)
+  (contract : Contracts.Contract L Assertion) (initial : Semantics.State L) =
+  ForProtocol (DSL.toProtocol L Assertion contract initial)
 
 module ForProgram (L : Semantics) (Assertion : Set) {A : Set}
-  (program : Programs.Program L Assertion A) (self : ℕ) =
-  ForProtocol (DSL.programToProtocol L Assertion program self)
+  (program : Programs.Program L Assertion A) (self : ℕ)
+  (initial : Semantics.State L) where
+
+  singleton : Contracts.Contract L Assertion
+  singleton = record
+    { self = self ; EntryPoint = ⊤ ; Input = λ _ → ⊤ ; Result = λ _ → A
+    ; body = λ _ _ _ → program }
+
+  open ForContract L Assertion singleton initial public

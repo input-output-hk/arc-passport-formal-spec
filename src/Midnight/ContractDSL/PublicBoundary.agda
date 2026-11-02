@@ -16,15 +16,18 @@ open import Relation.Nullary
 
 open import CategoricalCrypto.Iface
 open import CategoricalCrypto.Protocol
-open import CategoricalCrypto.Protocol.Observe
+import Midnight.ContractDSL.AdmissionProperties as Admissions
 import Midnight.ContractDSL.Balance as Balance
 import Midnight.ContractDSL.BalanceLedger as BL
+import Midnight.ContractDSL.Contract as Contracts
+import Midnight.ContractDSL.Experiment as Experiments
 import Midnight.ContractDSL.Program as Programs
+import Midnight.ContractDSL.ObservedExecution as Observed
 open import Midnight.ContractDSL.MidnightLedger as Ledger hiding (prepare)
-open import Midnight.ContractDSL.MerkleFixture using (initial; flags-read-only)
-open import Midnight.ContractDSL.Program midnight Assertion hiding (step; disclose)
+open import Midnight.ContractDSL.MerkleFixture using (initial)
+open import Midnight.ContractDSL.Program midnight Assertion hiding (step)
+open import Midnight.ContractDSL.ObservedExecution midnight Assertion
 open import Midnight.ContractDSL.Smoke using () renaming (readDet to deterministic)
-open import Midnight.ContractDSL.Protocol midnight Assertion
 
 -- Result declassification is fixed per entry, not chosen by the challenge bit.
 data Entry : Set where
@@ -39,75 +42,64 @@ bit : Bool → ℕ
 bit false = 0
 bit true = 1
 
-boundaryContract : Contract
+boundaryContract : Contracts.Contract midnight Assertion
 boundaryContract = record
-  { Name = Entry ; Input = λ _ → Bool ; PublicArgs = λ _ → ⊤ ; Result = Result
-  ; Witness = λ _ _ → ⊤ ; publicArgs = λ _ _ → tt
+  { self = 0 ; EntryPoint = Entry ; Input = λ _ → Bool × ⊤ ; Result = Result
   ; body = λ _ → λ
-      { silent b _ → pure tt
-      ; echo b _ → pure b
-      ; publicEcho b _ → pure b
-      ; publishInput b _ → perform (publish (bit b))
-      ; queryInput b _ → perform (ledger (flagMember b)) >> pure tt
-      ; abortAfter b _ → perform (publish (bit b)) >> perform (ledger (flagMember b)) >> assert false assertionFailed
-      ; chainGate b _ → perform (atChain (timeAtLeast 1)) } }
+      { silent (b , _) → pure tt
+      ; echo (b , _) → pure b
+      ; publicEcho (b , _) → pure b
+      ; publishInput (b , _) → perform (publish (bit b))
+      ; queryInput (b , _) → perform (ledger (flagMember b)) >> pure tt
+      ; abortAfter (b , _) → perform (publish (bit b)) >> perform (ledger (flagMember b)) >> assert false assertionFailed
+      ; chainGate (b , _) → perform (atChain (timeAtLeast 1)) } }
 
-module I = Interpreter boundaryContract (SimulatorCommunication.scheme boundaryContract) 0
+module I = Experiments.Runtime midnight Assertion boundaryContract (λ _ → ⊤) (λ _ _ → tt)
+module A = Admissions midnight Assertion boundaryContract
 
 query-input-details : (b : Bool) (s : State) {t : State} {j : Journal} →
-  eval (Contract.body boundaryContract 0 queryInput b tt) s ≡ inj₂ (finished tt t j) →
+  eval (I.body 0 queryInput (b , tt)) s ≡ inj₂ (finished tt t j) →
   t ≡ s × Σ Bool (λ observed →
     Ledger.prepare (flagMember b) s ≡ inj₂ (observed , s) ×
     j ≡ operated (flagMember b) observed ∷ [])
-query-input-details b s {t} {j} ev =
-  hoare-bind {P = λ u → u ≡ s}
-    {R = λ observed u js → u ≡ s ×
-      Ledger.prepare (flagMember b) s ≡ inj₂ (observed , s) ×
-      js ≡ operated (flagMember b) observed ∷ []}
-    {Q = λ _ u js → u ≡ s × Σ Bool (λ observed →
-      Ledger.prepare (flagMember b) s ≡ inj₂ (observed , s) ×
-      js ≡ operated (flagMember b) observed ∷ [])}
-    (perform (ledger (flagMember b))) (λ _ → pure tt)
-    (hoare-ledger (flagMember b) λ
-      { u observed v refl prepared →
-        let same = sym (cong proj₂ (inj₂-injective
-              (trans (sym (flags-read-only b s)) prepared))) in
-        same , subst (λ v → Ledger.prepare (flagMember b) s ≡ inj₂ (observed , v)) same prepared , refl })
-    (λ observed js → hoare-pure tt λ
-      { u (refl , observedAtSource , refl) → refl , observed , observedAtSource , refl })
-    s tt t j refl ev
+query-input-details false s refl = refl , falseFlag s , refl , refl
+query-input-details true s refl = refl , trueFlag s , refl , refl
 
-chain-gate-admitted : (ctx : Context) (s : State) (b : Bool) →
-  holds (timeAtLeast 1) ctx ≡ true → account ctx ≡ 0 →
-  I.admission ctx s
-    (I.makeTx chainGate b tt false s tt s (required (timeAtLeast 1) ∷ []) refl)
+chain-gate-admitted : (now : ℕ) (s : State) (b : Bool) →
+  holds (timeAtLeast 1) now ≡ true →
+  I.admit s (I.submit now (I.transaction
+    (I.makeCertifiedDraft chainGate (b , tt) I.neutralArtifact s tt s (required (timeAtLeast 1) ∷ []) refl)))
     ≡ (s , I.accepted)
-chain-gate-admitted ctx s b mature same =
-  I.makeTx-admitted chainGate b tt false s tt s (required (timeAtLeast 1) ∷ [])
-    refl ctx (mature , tt) same
+chain-gate-admitted now s b mature = A.Eligible⇒admit
+  (I.submit now (I.transaction
+    (I.makeCertifiedDraft chainGate (b , tt) I.neutralArtifact s tt s (required (timeAtLeast 1) ∷ []) refl)))
+  refl (mature , tt)
 
-chain-gate-required : (ctx : Context) (s : State) (acc : ℕ)
-  (artifact : Bool) (j : Journal)
-  (proof : I.Proof (I.statement acc chainGate tt artifact j)) {t : State} →
-  I.admission ctx s (I.transaction (I.statement acc chainGate tt artifact j) proof)
-    ≡ (t , I.accepted) →
-  holds (timeAtLeast 1) ctx ≡ true
-chain-gate-required ctx s acc artifact j proof admitted
-  with I.accepted-refinement ctx s
-    (I.transaction (I.statement acc chainGate tt artifact j) proof) admitted
-... | I.evidence view b tt tt opening , rel , refl =
-  proj₁ (I.accepted-conditions ctx s
-    (I.transaction (I.statement acc chainGate tt artifact (required (timeAtLeast 1) ∷ [])) proof) admitted)
+chain-gate-required : (now : ℕ) (s : State) (tx : I.Transaction) →
+  I.Transaction.entry tx ≡ chainGate → {t : State} →
+  I.admit s (I.submit now tx) ≡ (t , I.accepted) →
+  holds (timeAtLeast 1) now ≡ true
+chain-gate-required now s tx same {t} admitted = proj₁
+  (subst (Eligible now) journal-equal (A.accepted-eligible (I.submit now tx) s t admitted))
+  where
+  journal-equal : journal (I.Transaction.execution tx) ≡ required (timeAtLeast 1) ∷ []
+  journal-equal = entry-journal tx same
+    where
+    entry-journal : (q : I.Transaction) → I.Transaction.entry q ≡ chainGate →
+      journal (I.Transaction.execution q) ≡ required (timeAtLeast 1) ∷ []
+    entry-journal record { target = target ; entry = chainGate ; input = b , witness
+      ; view = view ; execution = run ; certified = cert } refl =
+      cong journal (sym (inj₂-injective cert))
 
-simulator-not-binding : ¬ CommunicationObligations.Binding boundaryContract (SimulatorCommunication.scheme boundaryContract)
-simulator-not-binding binding with proj₁ (proj₂ (binding false 0 silent false tt false 0 silent true tt false refl refl))
+simulator-not-binding : ¬ I.CommitmentBinding
+simulator-not-binding binding with cong proj₁
+  (proj₁ (binding I.neutralArtifact 0 silent (false , tt) (true , tt) false false tt tt))
 ... | ()
 
 PublicResult : Entry → Set
 PublicResult publicEcho = Bool
 PublicResult _ = ⊤
 
--- This result-declassification policy is unrelated to Program's no-op disclose.
 disclose : (n : Entry) → Result n → PublicResult n
 disclose publicEcho b = b
 disclose silent _ = tt
@@ -117,24 +109,24 @@ disclose queryInput _ = tt
 disclose abortAfter _ = tt
 disclose chainGate _ = tt
 
-module O = I.Observation PublicResult disclose
+module O = I.PublicProjection PublicResult disclose
 
 data Action : Set where
   prepare commit : Action
 
 request : Entry → Bool → Action → I.ClientQuery
-request n b prepare = I.build n b tt false
-request n b commit = I.submit
+request n b prepare = I.prepareDraft n (b , tt) I.neutralArtifact
+request n b commit = I.submitDraft
 
 publicSystem : Entry → Bool → Protocol unitᴵ (O.PublicAnswer ⇿ Action)
-publicSystem n b = O.wrapper (request n b) ∘ᵖ I.services (context 0 0) initial
+publicSystem n b = O.wrapper (request n b) ∘ᵖ I.services 0 initial
 
 publicResponse : Entry → Bool → Calls unitᴵ O.PublicAnswer
 publicResponse n b = step (publicSystem n b) (init (publicSystem n b)) prepare >>=ᶜ λ sr → ret (proj₂ sr)
 
 callerResponse : Entry → Bool → Calls unitᴵ I.ClientAnswer
-callerResponse n b = step (I.system (context 0 0) initial) (init (I.system (context 0 0) initial))
-  (I.build n b tt false) >>=ᶜ λ sr → ret (proj₂ sr)
+callerResponse n b = step (I.system 0 initial) (init (I.system 0 initial))
+  (I.prepareDraft n (b , tt) I.neutralArtifact) >>=ᶜ λ sr → ret (proj₂ sr)
 
 recipientResponse : Entry → Bool → Calls unitᴵ (Maybe (Σ Entry Result))
 recipientResponse n b = callerResponse n b >>=ᶜ λ answer → ret (O.recipientAnswer answer)
@@ -154,14 +146,14 @@ recipient-true : recipientResponse echo true ≡ ret (just (echo , true))
 recipient-true = refl
 
 public-result-policy-false : publicResponse publicEcho false ≡
-  ret (O.prepared publicEcho false (I.makeStatement publicEcho false false false []) [])
+  ret (O.prepared publicEcho false (I.claim 0 publicEcho tt I.neutralArtifact []) [])
 public-result-policy-false = refl
 public-result-policy-true : publicResponse publicEcho true ≡
-  ret (O.prepared publicEcho true (I.makeStatement publicEcho true true false []) [])
+  ret (O.prepared publicEcho true (I.claim 0 publicEcho tt I.neutralArtifact []) [])
 public-result-policy-true = refl
 
 publicTrace : O.PublicAnswer → Trace
-publicTrace (O.prepared n r claim observed) = observed
+publicTrace (O.prepared n r statement observed) = observed
 publicTrace (O.failed e observed) = observed
 publicTrace (O.provingFailed observed) = observed
 publicTrace _ = []
@@ -221,25 +213,42 @@ rejected-projection = refl
 no-draft-after-failure : admissionResponse abortAfter true ≡ ret O.absentDraft
 no-draft-after-failure = refl
 
-wrongAccountSystem : Protocol unitᴵ (O.PublicAnswer ⇿ Action)
-wrongAccountSystem = O.wrapper (request silent false) ∘ᵖ I.services (context 1 0) initial
+wrongTarget : I.Transaction
+wrongTarget = record
+  { target = 1 ; entry = silent ; input = false , tt ; view = initial
+  ; execution = finished tt initial [] ; certified = refl }
 
-wrong-account-rejected :
-  (step wrongAccountSystem (init wrongAccountSystem) prepare >>=ᶜ λ sr →
-    step wrongAccountSystem (proj₁ sr) commit >>=ᶜ λ tr → ret (proj₂ tr)) ≡ ret (O.admitted I.rejected)
-wrong-account-rejected = refl
+wrong-target-rejected :
+  (step (I.system 0 initial) (init (I.system 0 initial))
+    (I.sendEnvelope (I.certifiedEnvelope (I.certifiedDraft wrongTarget I.neutralArtifact))) >>=ᶜ λ next →
+      ret (O.publicAnswer (proj₂ next))) ≡ ret (O.submitted I.rejected)
+wrong-target-rejected = refl
 
-proofFailureServices : Protocol unitᴵ I.ServiceIf
-proofFailureServices = record
-  { St = ⊤ ; init = tt ; step = λ _ → λ
-      { I.snapshotRequest → ret (tt , I.snapshotAnswer initial)
-      ; (I.proofRequest tx) → ret (tt , I.proofAnswer false)
-      ; (I.submitRequest tx) → ret (tt , I.submitAnswer I.rejected) } }
+proofFailureResource : Protocol unitᴵ I.ProofIf
+proofFailureResource = record { St = ⊤ ; init = tt ; step = λ _ _ → ret (tt , false) }
 
 proof-failure-projection :
-  (step (O.wrapper (request publishInput true) ∘ᵖ proofFailureServices) (nothing , tt) prepare >>=ᶜ λ sr →
-    ret (proj₂ sr)) ≡ ret (O.provingFailed (publication 1 ∷ []))
+  (step (O.wrapper (request publishInput true) ∘ᵖ (I.bridge 0 initial ∘ᵖ proofFailureResource))
+    (nothing , initial , tt) prepare >>=ᶜ λ sr → ret (proj₂ sr)) ≡
+    ret (O.provingFailed (publication 1 ∷ []))
 proof-failure-projection = refl
+
+verificationFailureResource : Protocol unitᴵ I.ProofIf
+verificationFailureResource = record
+  { St = ⊤ ; init = tt ; step = λ _ → λ
+      { (I.certifyRequest p) → ret (tt , true)
+      ; (I.verifyRequest p) → ret (tt , false)
+      ; I.invalidVerifyRequest → ret (tt , false) } }
+
+verificationFailureSystem : Protocol unitᴵ (O.PublicAnswer ⇿ Action)
+verificationFailureSystem =
+  O.wrapper (request silent false) ∘ᵖ (I.bridge 0 initial ∘ᵖ verificationFailureResource)
+
+verification-rejection :
+  (step verificationFailureSystem (init verificationFailureSystem) prepare >>=ᶜ λ sr →
+    step verificationFailureSystem (proj₁ sr) commit >>=ᶜ λ tr → ret (proj₂ tr)) ≡
+    ret (O.admitted I.rejected)
+verification-rejection = refl
 
 occupiedResponse : Calls unitᴵ O.PublicAnswer
 occupiedResponse = step P (init P) prepare >>=ᶜ λ sr →
@@ -253,27 +262,32 @@ absent-projection : step (publicSystem silent false) (init (publicSystem silent 
   ret ((nothing , initial , tt) , O.absentDraft)
 absent-projection = refl
 
+invalid-envelope-projection :
+  (step (I.system 0 initial) (init (I.system 0 initial)) (I.sendEnvelope I.invalidEnvelope) >>=ᶜ λ sr →
+    ret (O.publicAnswer (proj₂ sr))) ≡ ret O.transportInvalid
+invalid-envelope-projection = refl
+
 module BP = Programs BL.balanceLedger BL.Assertion
-module BO = Balance.B.Observation (λ _ → ⊤) (λ _ _ → tt)
+module BObserved = Observed BL.balanceLedger BL.Assertion
+module BE = Experiments.Runtime BL.balanceLedger BL.Assertion Balance.balanceContract (λ _ → ℕ) (λ _ n → n)
+module BO = BE.PublicProjection (λ _ → ⊤) (λ _ _ → tt)
 
 balanceResponse : ℕ → Calls unitᴵ BO.PublicAnswer
 balanceResponse amount = step P (init P) tt >>=ᶜ λ sr → ret (proj₂ sr)
   where
-  P = BO.wrapper (λ _ → Balance.B.build BL.alice amount tt 0) ∘ᵖ
-    Balance.B.services Balance.ctx Balance.initial
+  P = BO.wrapper (λ _ → BE.prepareDraft BL.alice amount BE.neutralArtifact) ∘ᵖ BE.services 0 Balance.initial
 
 operation-failure-projection : balanceResponse 11 ≡ ret
   (BO.failed (BP.operationError BL.insufficientFunds)
-    (BP.queried (BL.transfer BL.alice 11) (inj₁ BL.insufficientFunds) ∷ []))
+    (BObserved.queried (BL.transfer BL.alice 11) (inj₁ BL.insufficientFunds) ∷ []))
 operation-failure-projection = refl
 
 empty-assertion-projection : balanceResponse 0 ≡ ret (BO.failed (BP.assertionError BL.emptyTransfer) [])
 empty-assertion-projection = refl
 
--- Runtime readers use the changed assembled wrapper, not theorem constants.
 publicBooleanBoundary : Bool
 publicBooleanBoundary = case deterministic (publicResponse silent false) of λ
-  { (just (O.prepared silent tt claim [])) → case deterministic (publicResponse silent true) of λ
+  { (just (O.prepared silent tt statement [])) → case deterministic (publicResponse silent true) of λ
       { (just (O.prepared silent tt claim′ [])) → true ; _ → false }
   ; _ → false }
 
@@ -303,7 +317,7 @@ abortBoundary = case deterministic (readPublication abortAfter true) of λ
 
 publicResultBoundary : Bool
 publicResultBoundary = case deterministic (publicResponse publicEcho true) of λ
-  { (just (O.prepared publicEcho true claim [])) → case deterministic (publicResponse publicEcho false) of λ
+  { (just (O.prepared publicEcho true statement [])) → case deterministic (publicResponse publicEcho false) of λ
       { (just (O.prepared publicEcho false claim′ [])) → true ; _ → false }
   ; _ → false }
 
@@ -318,4 +332,34 @@ operationFailureBoundary = case deterministic (balanceResponse 11) of λ
   { (just (BO.failed (BP.operationError BL.insufficientFunds) _)) →
       case deterministic (balanceResponse 0) of λ
         { (just (BO.failed (BP.assertionError BL.emptyTransfer) [])) → true ; _ → false }
+  ; _ → false }
+
+proofResourceBoundary : Bool
+proofResourceBoundary = case deterministic
+  (step (O.wrapper (request publishInput true) ∘ᵖ (I.bridge 0 initial ∘ᵖ proofFailureResource))
+    (nothing , initial , tt) prepare >>=ᶜ λ sr → ret (proj₂ sr)) of λ
+  { (just (O.provingFailed (publication 1 ∷ []))) → case deterministic
+      (step verificationFailureSystem (init verificationFailureSystem) prepare >>=ᶜ λ sr →
+        step verificationFailureSystem (proj₁ sr) commit >>=ᶜ λ tr → ret (proj₂ tr)) of λ
+      { (just (O.admitted I.rejected)) → true ; _ → false }
+  ; _ → false }
+
+transportBoundary : Bool
+transportBoundary = case deterministic
+  (step (I.system 0 initial) (init (I.system 0 initial))
+    (I.sendEnvelope (I.certifiedEnvelope (I.certifiedDraft wrongTarget I.neutralArtifact))) >>=ᶜ λ sr →
+      ret (O.publicAnswer (proj₂ sr))) of λ
+  { (just (O.submitted I.rejected)) → case deterministic
+      (step (I.system 0 initial) (init (I.system 0 initial)) (I.sendEnvelope I.invalidEnvelope) >>=ᶜ λ sr →
+        ret (O.publicAnswer (proj₂ sr))) of λ
+      { (just O.transportInvalid) → true ; _ → false }
+  ; _ → false }
+
+draftBoundary : Bool
+draftBoundary = case deterministic occupiedResponse of λ
+  { (just O.occupied) → case deterministic (admissionResponse abortAfter true) of λ
+      { (just O.absentDraft) → case deterministic
+          (step (publicSystem silent false) (init (publicSystem silent false)) commit) of λ
+          { (just (_ , O.absentDraft)) → true ; _ → false }
+      ; _ → false }
   ; _ → false }

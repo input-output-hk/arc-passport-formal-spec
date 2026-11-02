@@ -22,7 +22,9 @@ open import Midnight.ContractDSL.MidnightLedger
 open import Midnight.ContractDSL.Merkle
 open import Midnight.ContractDSL.MerkleFixture as Fixture hiding (initial)
 open import Midnight.ContractDSL.Program midnight Assertion
-open import Midnight.ContractDSL.Protocol midnight Assertion
+import Midnight.ContractDSL.Contract as Contracts
+import Midnight.ContractDSL.Protocol as Protocols
+import Midnight.ContractDSL.Experiment as Experiments
 open import Midnight.ContractDSL.SymbolicDigest
 
 -- Any matching mutable root suffices; this is not restricted to the fixture.
@@ -39,31 +41,37 @@ data Entry : Set where
   membership replaceRoot replaceFlags : Entry
 
 Input : Entry → Set
-Input membership = FieldValue
+Input membership = FieldValue × Path
 Input replaceRoot = Digest
 Input replaceFlags = Bool × Bool
 
-Witness : (n : Entry) → Input n → Set
-Witness membership _ = Path
-Witness replaceRoot _ = ⊤
-Witness replaceFlags _ = ⊤
+PublicInput : Entry → Set
+PublicInput membership = FieldValue
+PublicInput replaceRoot = Digest
+PublicInput replaceFlags = Bool × Bool
+
+projectInput : (n : Entry) → Input n → PublicInput n
+projectInput membership = proj₁
+projectInput replaceRoot r = r
+projectInput replaceFlags flags = flags
 
 -- Root/flag maintenance is deliberately unrestricted in this regression
 -- contract; it makes no source-level access-control correspondence claim.
-merkleContract : Contract
+merkleContract : Contracts.Contract midnight Assertion
 merkleContract = record
-  { Name = Entry ; Input = Input ; PublicArgs = Input ; Result = λ _ → ⊤
-  ; Witness = Witness ; publicArgs = λ _ x → x
+  { self = 31 ; EntryPoint = Entry ; Input = Input ; Result = λ _ → ⊤
   ; body = λ _ → λ
-      { membership item p → checkSecure item p
-      ; replaceRoot r _ → perform (ledger (updateRoot r))
-      ; replaceFlags (f , t) _ → perform (ledger (updateFlags f t)) } }
+      { membership (item , p) → checkSecure item p
+      ; replaceRoot r → perform (ledger (updateRoot r))
+      ; replaceFlags (f , t) → perform (ledger (updateFlags f t)) } }
 
-module M = Interpreter merkleContract (ExactCommunication.scheme merkleContract) 31
-open M
+module C = Contracts.Contract merkleContract
+module P = Protocols midnight Assertion merkleContract
+module M = Experiments.Runtime midnight Assertion merkleContract PublicInput projectInput
+open C hiding (Input)
 
-ctx : Context
-ctx = context 31 0
+slot : ℕ
+slot = 0
 
 initial : State
 initial = Fixture.initial
@@ -77,8 +85,10 @@ oldJournal = operated (checkRoot fixtureRoot) true ∷ []
 old-success : eval (checkSecure 1 (findItem a)) initial ≡ inj₂ (finished tt initial oldJournal)
 old-success = refl
 
-oldTx : Tx
-oldTx = makeTx membership 1 (findItem a) 0 initial tt initial oldJournal old-success
+oldTx : Transaction
+oldTx = record
+  { target = 31 ; entry = membership ; input = 1 , findItem a ; view = initial
+  ; execution = finished tt initial oldJournal ; certified = old-success }
 
 updateRootJournal : Journal
 updateRootJournal = operated (updateRoot (merkleLeaf 9)) tt ∷ []
@@ -87,8 +97,10 @@ root-success : eval (perform (ledger (updateRoot (merkleLeaf 9)))) initial ≡
   inj₂ (finished tt changed updateRootJournal)
 root-success = refl
 
-rootTx : Tx
-rootTx = makeTx replaceRoot (merkleLeaf 9) tt 1 initial tt changed updateRootJournal root-success
+rootTx : Transaction
+rootTx = record
+  { target = 31 ; entry = replaceRoot ; input = merkleLeaf 9 ; view = initial
+  ; execution = finished tt changed updateRootJournal ; certified = root-success }
 
 freshPath : Path
 freshPath = path 9 []
@@ -99,31 +111,34 @@ freshJournal = operated (checkRoot (merkleLeaf 9)) true ∷ []
 fresh-success : eval (checkSecure 9 freshPath) changed ≡ inj₂ (finished tt changed freshJournal)
 fresh-success = matching-success 9 freshPath changed refl refl
 
-freshTx : Tx
-freshTx = makeTx membership 9 freshPath 2 changed tt changed freshJournal fresh-success
+freshTx : Transaction
+freshTx = record
+  { target = 31 ; entry = membership ; input = 9 , freshPath ; view = changed
+  ; execution = finished tt changed freshJournal ; certified = fresh-success }
 
-matching-admitted : admission ctx initial oldTx ≡ (initial , accepted)
+matching-admitted : admit initial (submit slot oldTx) ≡ (initial , accepted)
 matching-admitted = refl
 
-root-updated : admission ctx initial rootTx ≡ (changed , accepted)
+root-updated : admit initial (submit slot rootTx) ≡ (changed , accepted)
 root-updated = refl
 
 -- Old certificates remain valid about their preparation view. Admission
 -- rejects their recorded true observation against the current changed root.
-old-proof-valid : verified oldTx ≡ true
-old-proof-valid = refl
-
+old-certificate-execution :
+  eval (C.body (Transaction.target oldTx) (Transaction.entry oldTx) (Transaction.input oldTx))
+    (Transaction.view oldTx) ≡ inj₂ (Transaction.execution oldTx)
+old-certificate-execution = Transaction.certified oldTx
 old-evaluation-rejected : eval (checkSecure 1 (findItem a)) changed ≡
   inj₁ (assertionError assertionFailed)
 old-evaluation-rejected = refl
 
-old-replay-rejected : replay ctx oldJournal changed ≡ nothing
+old-replay-rejected : replay slot oldJournal changed ≡ nothing
 old-replay-rejected = refl
 
-old-admission-rejected : admission ctx changed oldTx ≡ (changed , rejected)
+old-admission-rejected : admit changed (submit slot oldTx) ≡ (changed , rejected)
 old-admission-rejected = refl
 
-fresh-admitted : admission ctx changed freshTx ≡ (changed , accepted)
+fresh-admitted : admit changed (submit slot freshTx) ≡ (changed , accepted)
 fresh-admitted = refl
 
 noFalseFlag : State
@@ -137,20 +152,24 @@ removed-flag-rejected : eval (program insecure a false) noFalseFlag ≡
   inj₁ (assertionError assertionFailed)
 removed-flag-rejected = refl
 
-removed-flag-replay-rejected : replay ctx (programJournal insecure a false) noFalseFlag ≡ nothing
+removed-flag-replay-rejected : replay slot (programJournal insecure a false) noFalseFlag ≡ nothing
 removed-flag-replay-rejected = refl
 
-assembled : Upstream.Protocol unitᴵ ClientIf
-assembled = system ctx initial
+assembled : Upstream.Protocol unitᴵ P.ContractIf
+assembled = P.toProtocol initial
 
-rootChangeStrategy : Strat ClientQuery ClientAnswer
-rootChangeStrategy = ask (build membership 1 (findItem a) 0) λ
-  { (built membership tt _ _) → ask (submitOther oldTx) λ
-      { (submitted accepted) → ask (submitOther rootTx) λ
-          { (submitted accepted) → ask submit λ
-              { (submitted rejected) → ask (build membership 9 freshPath 2) λ
-                  { (built membership tt _ _) → ask submit λ
-                      { (submitted accepted) → out true ; _ → out false }
+clientSystem : Upstream.Protocol unitᴵ M.ClientIf
+clientSystem = M.system slot initial
+
+rootChangeStrategy : Strat M.ClientQuery M.ClientAnswer
+rootChangeStrategy = ask (M.prepareDraft membership (1 , findItem a) M.neutralArtifact) λ
+  { (M.preparedAnswer membership tt _ _) →
+      ask (M.sendEnvelope (M.certifiedEnvelope (M.certifiedDraft oldTx M.neutralArtifact))) λ
+      { (M.submitted accepted) → ask (M.sendEnvelope (M.certifiedEnvelope (M.certifiedDraft rootTx M.neutralArtifact))) λ
+          { (M.submitted accepted) → ask M.submitDraft λ
+              { (M.admitted rejected) → ask (M.prepareDraft membership (9 , freshPath) M.neutralArtifact) λ
+                  { (M.preparedAnswer membership tt _ _) → ask M.submitDraft λ
+                      { (M.admitted accepted) → out true ; _ → out false }
                   ; _ → out false }
               ; _ → out false }
           ; _ → out false }

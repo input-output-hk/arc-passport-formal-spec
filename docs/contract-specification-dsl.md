@@ -14,14 +14,11 @@ correspondence. It is **not** a model of Compact, ZKIR, or their compilation
 pipelines. The connection between a specification program and its actual circuit
 will rely on manual review for the foreseeable future.
 
-Use categorical-crypto's `protocol-rewrite` branch until its contents are merged.
-The design was inspected against local commit
-`579b54e72d453fd6287f05f90a32b933b8474390`. That revision was not fetchable from
-GitHub when starting the prototype. The reproducible prototype dependency in
-`pagda.nix` instead pins the published branch revision
-`437dca12c85f096715fc06d9155146b3afc5f46e`, whose core `Protocol` API matches.
-Keep this distinction explicit rather than depending on a moving branch or a
-machine-local worktree. Relevant upstream modules are:
+The current dependency is pinned in `pagda.nix` to categorical-crypto
+`f280e04f34a6d893fcf48b0f9b2845bc045122ea`, inherited from `main`.
+The original prototype used `437dca12c85f096715fc06d9155146b3afc5f46e`;
+its recorded executable results below are historical, not verification of the
+rebased snapshot. Relevant upstream modules are:
 
 - `CategoricalCrypto.Protocol`: stateful programs with `St`, `init`, and `step`,
   using `Calls` for finite interactions, probabilistic choice, and divergence.
@@ -30,16 +27,43 @@ machine-local worktree. Relevant upstream modules are:
 - `CategoricalCrypto.Examples.ChimericLedger.Property` and `Transfer`: examples
   separating observable properties, internal-state properties, and their transfer.
 
-### Checked prototype
+### Certified-transaction port verification
 
-The first implementation lives in [`src/Midnight/ContractDSL`](../src/Midnight/ContractDSL/).
-The modules distinguish executable definitions from the wider pseudocode below:
+The 2026-11-02 working-tree port on `feat/recovery-dsl`, rebased onto local
+`main` at `42636b9`, checked `Smoke`, `PublicBoundaryMain`, `PrivacySmokeMain`
+and `PrivacyReplacementExample` together against the current pin. The check
+used `LC_ALL=C.UTF-8`, `pagda --useUntracked false check` and
+`+RTS -M8G -H1G -RTS`; the privacy closure exhausted a 3 GiB heap but passed
+with 8 GiB. There were no warning-gate diagnostics.
 
-| Module | Implemented definitions and checked results |
+`SmokeMain`, `PublicBoundaryMain` and `PrivacySmokeMain` were then compiled
+with `--compile --compile-dir=_build/rebase-examples --ghc-flag=-O0` and run.
+Every lock, balance, Merkle and public-boundary Boolean check returned `true`.
+Both secure and insecure privacy fixtures completed two accepted calls with
+mass `1/1`; the secure observer's true mass was `0/1` in both worlds, while
+the insecure observer distinguished them with masses `0/1` and `1/1`.
+These are working-tree checks of the port, not new evidence for the historical
+snapshot or deployed circuits. Recovery-specific checks are recorded
+[separately](conformance-recovery.md#certified-transaction-port-verification).
+
+### Current core
+
+The implementation lives in [`src/Midnight/ContractDSL`](../src/Midnight/ContractDSL/).
+Recovery uses the current core directly; the broader pseudocode later in this
+document is design discussion, not its literal API.
+
+| Module | Definitions and results |
 |---|---|
-| [`Ledger.agda`](../src/Midnight/ContractDSL/Ledger.agda) | Minimal `Semantics` interface and generic `Execution`: result validation, `apply`, `same-view`, and `rebase` derived once |
-| [`Program.agda`](../src/Midnight/ContractDSL/Program.agda) | Parameterized monadic programs, traced execution, separate operation/assertion errors, publication, chain conditions and ordered replay; `bind-success`, compositional `Hoare` rules, `replay-eligible`, `replay-refinement` and `lift-Hoare` |
-| [`Protocol.agda`](../src/Midnight/ContractDSL/Protocol.agda) | Parameterized contracts/communication, certificate validation, atomic admission, generic `Admissions`, declared-result `Observation.wrapper` and upstream composition; `makeTx-admitted`, `accepted-conditions`, `accepted-refinement` and system/reachability invariants |
+| [`Ledger.agda`](../src/Midnight/ContractDSL/Ledger.agda) | Typed `Op`, `Res`, and `Failure`; result equality; `prepare` and recorded-result validation through `Execution.apply` |
+| [`Program.agda`](../src/Midnight/ContractDSL/Program.agda) | Monadic programs, operation/assertion errors, publications, deferred chain-time conditions, evaluation and ordered replay |
+| [`Properties.agda`](../src/Midnight/ContractDSL/Properties.agda) | Replay refinement, same-view replay and accepted-journal time eligibility; proofs in `ReplayProof` |
+| [`Hoare.agda`](../src/Midnight/ContractDSL/Hoare.agda) | Outcome predicates covering failure and success, compositional rules, successful-bind decomposition and replay lifting |
+| [`Contract.agda`](../src/Midnight/ContractDSL/Contract.agda) | Account instance, typed entrypoints, evaluation-certified `Transaction`, timed `Submission`, atomic `admit` and generic `Admissions` |
+| [`AdmissionProperties.agda`](../src/Midnight/ContractDSL/AdmissionProperties.agda) | Same-view admission, accepted execution/time conditions, rejection atomicity and invariant preservation |
+| [`Protocol.agda`](../src/Midnight/ContractDSL/Protocol.agda) | Core submission protocol, publication receipts, reachability and invariant preservation |
+| [`ObservedExecution.agda`](../src/Midnight/ContractDSL/ObservedExecution.agda) | Instrumented evaluation with pre-abort traces, proved equal to core evaluation |
+| [`Experiment.agda`](../src/Midnight/ContractDSL/Experiment.agda) | Off-chain transport client used by safety fixtures and privacy experiments; delegates admission to the native core protocol |
+| [`Experiment/Properties.agda`](../src/Midnight/ContractDSL/Experiment/Properties.agda) | Composed-client admission histories and public-admission correspondence; statements use `Runtime.ledgerState` |
 | [`MidnightLedger.agda`](../src/Midnight/ContractDSL/MidnightLedger.agda) | Concrete shared lock/Merkle example operations, bounded counters, mutable root and flag contents |
 | [`SymbolicDigest.agda`](../src/Midnight/ContractDSL/SymbolicDigest.agda), [`FixtureLedger.agda`](../src/Midnight/ContractDSL/FixtureLedger.agda) | Concrete symbolic hash algebra, separate four-member fixture root and fixture state initialization |
 | [`BalanceLedger.agda`](../src/Midnight/ContractDSL/BalanceLedger.agda), [`Balance.agda`](../src/Midnight/ContractDSL/Balance.agda) | Independent two-account balance map, transfer/error/replay behavior and conservation lifted through the same generic admission/reachability proofs |
@@ -47,53 +71,47 @@ The modules distinguish executable definitions from the wider pseudocode below:
 | [`Lock.agda`](../src/Midnight/ContractDSL/Lock.agda) | The [official lock example](https://docs.midnight.network/compact/reference/writing.md), `clear-safety`, `accepted-clear`, and the bounded-round invariant lifted to reachable system states |
 | [`Smoke.agda`](../src/Midnight/ContractDSL/Smoke.agda) | Actual assembled lock, balance and mutable-root Merkle strategies: success, distinct operation/assertion failures, valid replay and current-state conflicts |
 
-The central checked result is an exact **safety** lift. If every registered
-program preserves an invariant under successful local evaluation, the assembled
-`system` preserves it at every completed activation and reachable finite prefix,
-including arbitrary `submitOther` transactions. Accepted replay is related back
-to evaluation at the actual admission state, not just the client's old view.
-Rejected transactions preserve the chain state. The lock example instantiates
-this generic theorem rather than reproving its protocol invariant independently.
+The central safety lift relates accepted replay to evaluation at the actual
+admission state, not just the client's old view. `admissions-preserve` lifts
+entrypoint preservation over every finite admission trace, including rejection.
+`Protocol` connects this result to native protocol reachability.
+`Experiment.Properties.system-admissions` also connects the composed transport client's
+reachable states to core admission traces: Lock and Balance retain invariants
+for both interfaces. Smoke exercises that experimental client. Rejection
+preserves the chain state.
 
 The proof-composition interface follows the program's binds. `bind-success`
 recovers the intermediate `Finished` result, the continuation's successful
 evaluation, and the concatenation of their journals. `hoare-pure`,
-`hoare-assert`, `hoare-ledger` and `hoare-bind` compose the existing `Hoare`
-judgment; assertion rules expose the successful guard, and ledger rules expose
-the observed result and `prepare` equation. They do not impose an account policy.
+`hoare-assert`, `hoare-ledger` and `hoare-bind` compose the outcome-based `Hoare`
+judgment. Assertion and ledger rules cover both failure and success; `onSuccess`
+restricts a preservation claim to successful outcomes. They impose no account policy.
 Concrete applications are recovery's authority/execution proofs,
 [`Balance.send-details`](../src/Midnight/ContractDSL/Balance.agda) (positive,
 funded transfers and conservation), and
 [`PublicBoundary.query-input-details`](../src/Midnight/ContractDSL/PublicBoundary.agda)
 (a read-only membership query with its observed result and journal).
 
-For admission, `makeTx-admitted` packages same-view replay under explicit account
-identity and `Eligible ctx j` premises. `Eligible` means that every `required`
-condition in journal `j` holds in `ctx`; it does not assert freedom from ledger
-conflicts. `accepted-conditions` establishes `Eligible` for any accepted
-transaction's journal. These lemmas are generic in the communication scheme:
-recovery uses exact communication, while
-`PublicBoundary.chain-gate-admitted` and `chain-gate-required` use the deliberately
-non-binding simulator scheme. Recovery-specific readiness and authority facts
-remain local; exact journal specifications remain independent of evaluation.
+For admission, `Eligible⇒admit` packages same-view replay under explicit target
+identity and `Eligible now j` premises. `Eligible` means every `required`
+condition in journal `j` holds at `now`; it does not assert freedom from ledger
+conflicts. `accepted-eligible` establishes it for every accepted journal.
+Recovery-specific readiness and authority facts remain local; exact journal
+specifications remain independent of evaluation.
 
-Some implementation choices deliberately keep this first proof small:
+The core's boundaries are explicit:
 
-- `Op : Kind → Set` uses a small universe of result codes, interpreted by
-  `El : Kind → Set`. Thus `o : Op k` returns `El k`; this avoids raising every
-  protocol interface's universe. It is not a second schema abstraction.
-- `apply` is derived from `prepare` by checking the recorded result. This captures
-  exact reads, predicate dependencies, and delta increments with one semantics.
-- The proof resource carries evidence and a derivation of the induced relation.
-  Its soundness and completeness are proved, but it is **not zero knowledge**.
-  Communication is parameterized by `CommunicationScheme`; the safety examples
-  use `ExactCommunication.scheme`, an explicitly non-hiding tuple with a checked
-  `binding` proof. The symbolic lock hash and certificates establish no cryptographic privacy.
-- The safety model has one account, a fixed authenticated context, and one atomic
-  segment. It uses upstream `Protocol`, composition, `Strategy`, and `AllLeaves`.
-  The Merkle session wrapper below drives that same generic client and admission
-  implementation, with an exact relational privacy lift under simulator-token
-  resource premises, not a quantitative theorem for deployed schemes.
+- `Op : Kind → Set` returns `Res k`; failures are indexed by the same `Kind`.
+- `apply` recomputes `prepare` and checks the recorded result.
+- A `Transaction` carries its input, build view, finished execution and a proof
+  of evaluation. It is not zero knowledge. Malformed raw evidence cannot inhabit
+  this type; conformance adapters reject it before calling core admission.
+- `Submission` supplies `now`. The receiving contract fixes `self`, checks the
+  transaction target and atomically replays the journal.
+- Communication tokens, private proof services and pre-abort observation traces
+  belong to the experimental safety/privacy clients, not recovery or core admission.
+
+### Historical prototype execution evidence
 
 The core modules check with `--safe --without-K`, without added postulates or
 termination escapes. `SmokeMain.agda` supplies only the executable IO wrapper.
@@ -116,13 +134,13 @@ published protocol branch's solver dependency.
 ### Ideal-resource Merkle history experiment
 
 The executable implementation of [the second example](#9-second-target-history-privacy-and-a-correlation-only-leak)
-uses the same pinned published upstream revision as the lock prototype:
+uses the core contract API through an explicit experimental observation boundary:
 
 | Module | Definitions and results |
 |---|---|
 | [`Merkle.agda`](../src/Midnight/ContractDSL/Merkle.agda) | Source-shaped `checkSecure` and `checkInsecure`, arbitrary natural-valued `FieldValue` input and arbitrary untrusted `Path`, computed symbolic root; insecure modification parameterized by a public pure classification function |
 | [`MerkleFixture.agda`](../src/Midnight/ContractDSL/MerkleFixture.agda) | Four-known-member fixture and chosen `classify`, depth-10 paths, compatibility-premised `successful`/`admitted`, `fixture-successful`, `paired-tags`, wrong-leaf and wrong-root rejection |
-| [`Privacy.agda`](../src/Midnight/ContractDSL/Privacy.agda) | Fixed honest Merkle session wrapper over generic `Interpreter.toProtocol` and `bridge`; actual generic statements/traces and admission verdicts, private mask/draft, `ProgramHistoryPrivacy`, `Coupling.step-public`, `lift-privacy`, `secure-history-private` |
+| [`Privacy.agda`](../src/Midnight/ContractDSL/Privacy.agda) | Fixed honest Merkle session over `Experiment.Runtime.client` and `bridge`; projected claims/traces and core admission verdicts, private mask/draft, `ProgramHistoryPrivacy`, `Coupling.step-public`, `lift-privacy`, `secure-history-private` |
 | [`PrivacySmoke.agda`](../src/Midnight/ContractDSL/PrivacySmoke.agda) | Actual upstream composition and five separate session/prepare/submit activations, `single-tag-uniform`, `secure-joint-observable-equality`, four probability-one successful histories, `insecure-gap-one`, `insecure-not-private`, `fresh-pair-quarter` |
 | [`PrivacyReplacement.agda`](../src/Midnight/ContractDSL/PrivacyReplacement.agda) | Parameterized resource replacement, `system-emulates`, generic robust-property `transfer`, shared resource `simulator`, `context-simulation`, relational `TwoWorld.transfer-private`/`transfer-closed`, and actual `ForProgram`/`ForProtocol` compiler adapters; exact and canonical negligible `UCSetup` instances |
 | [`PrivacyReplacementExample.agda`](../src/Midnight/ContractDSL/PrivacyReplacementExample.agda) | Nonidentity negation simulator, different honest contexts, simulator-stable ideal relation, concrete correlation observer, and a counterexample when the ideal invariant is broken |
@@ -142,22 +160,23 @@ for both fixed calls. The generic execution reports, statements and admission
 verdicts then correspond, even though the private draft certificates differ.
 This is sufficient, not completeness for every possible relational coupling.
 
-The wrapper invokes `Interpreter.toProtocol` composed with the same `bridge`
-as safety. Thus snapshot acquisition, actual evaluation, relation construction,
-proving failure, authenticated account checking, replay and ledger state all
-come from one implementation. Submission uses the draft actually returned by
-the generic build, not a fixture-selected substitute.
+`Experiment.Runtime.client` builds a certified core transaction together with
+an experimental artifact. Its `bridge now initial` delegates accepted transport
+envelopes to `Protocol.toProtocol initial`; the core checks target identity and
+replays the actual journal. Invalid transport envelopes are rejected before
+core admission. `ObservedExecution.execute-correct` relates the instrumented
+evaluation, including pre-abort traces, to `Program.eval`.
 
-`SimulatorCommunication.scheme` relates its Boolean artifact to its private
-Boolean opening. Each preparation samples fresh communication randomness;
-the ideal private proving resource separately samples a fresh proof token.
+Each preparation samples a Boolean communication artifact; the ideal private
+proving resource separately samples a fresh proof token.
 `PrivacyResources.seal-law` is literal pointwise equality with `idealStep`,
-not a real-resource UC simulation premise. Verification currently receives the
-generic private `Tx` and checks its certificate. The tokens do **not** implement
-binding commitments, public proof verification, issuance or malicious-submission
-security. No `CommunicationObligations.Binding` witness is supplied for the
-simulator-token instance. These limitations belong to package 4, not a hidden
-assumption that the tokens already implement ZK.
+not a real-resource UC simulation premise. Resource requests carry a private
+`CertifiedDraft` containing the certified transaction and artifact.
+`Runtime.Claim` exposes only the projected public input, target, entry, artifact
+and journal. The simulator commitment relation is deliberately non-binding;
+`PublicBoundary.simulator-not-binding` records this limitation. Tokens do not
+implement binding commitments, public proof verification, issuance or
+malicious-submission security. They are not a ZK implementation.
 
 The observer sees the selected fixed code identity, account, unit public
 arguments, all ledger operation arguments/results and publications, public
@@ -175,10 +194,10 @@ fallbacks. Both variants preserve the same ledger state and return unit.
 circuit's private input type, and total fixture `findItem` is not an assumption
 about arbitrary witnesses. The modeled circuit takes `FieldValue = ℕ` (a named
 symbolic abstraction, not Compact Field arithmetic) and an arbitrary `Path`,
-and checks both private leaf equality and public root membership. Its contract
-input domain is likewise `FieldValue`. The selected client converts known
-example members into values/paths. Actual public journals and traces are derived
-from the generic interpreter's execution, not a canned distribution.
+and checks both private leaf equality and public root membership. Its core
+contract input includes the value, path and mask; the experimental public-input
+projection hides them. The selected client supplies known values/paths.
+Public journals and traces derive from actual evaluation, not a canned distribution.
 The insecure modification takes a pure `(FieldValue → Bool)` classification
 parameter. The fixture predicate compares with values 3 and 4; that predicate
 is an experiment choice, not a classification claimed from Midnight's source.
@@ -232,9 +251,10 @@ notion or an assumption that the real system already satisfies the property.
 
 The concrete entry points are:
 
-- `ForProgram program self`: compiles any `Program A` using the existing
-  `programToProtocol` and upstream `Protocol.Machine.morphism`.
-- `ForContract contract self`: handles registered entry points and witnesses.
+- `ForProgram L Assertion program self initial`: builds a singleton core
+  `Contract` and compiles its native protocol using `Protocol.Machine.morphism`.
+- `ForContract L Assertion contract initial`: compiles the supplied core contract;
+  inputs contain any private witness data. There is no communication-scheme argument.
 - `ForProtocol context`: also supports a client/session wrapper such as the
   Merkle experiment's stateful two-call client.
 - Each supplies `WithResources real ideal emulates` for compiled resource
@@ -272,6 +292,12 @@ emulation proofs, matching code/account and public/private boundaries, certified
 polynomial interaction allowances and a separate computational-time/PPT
 admissibility argument. Interaction allowances alone do not prove PPT security.
 
+#### Historical replacement verification (pre-port)
+
+The following runs used the prototype retained at `26ab5df`, not the current
+certified-transaction API. Heap requirements below are historical measurements,
+not verified resource guidance for the port.
+
 Verification on 2026-10-08: the replacement module checked with the canonical
 3-GiB settings. A throwaway concrete `ForProgram (clear key) 7` instantiation
 checked `transfer-unrestricted` and `compiled-assembly`, using reflexive resource
@@ -285,7 +311,7 @@ proved-equivalent native composition, not those inconclusive approximants.
 The concrete-instance compilation used paired `-M8G -H1G`; the throwaway source
 and generated executable were removed afterward.
 
-Reproduce serially from the repository root:
+Historical reproduction commands (pre-port API and dependency):
 
 ```sh
 LC_ALL=C.utf8 timeout 1800 pagda --useUntracked false check \
@@ -927,22 +953,12 @@ for the activation, owns `s`, and commits only the returned state. Other
 transactions cannot interleave inside this activation. The resource must not
 offer a separate unauthenticated operation for applying a raw journal.
 
-The executable [`Interpreter`](../src/Midnight/ContractDSL/Protocol.agda) also
-provides `Admissions : State → State → Set` for any contract, communication
-scheme and account identity. `done` is the empty trace; `next` records a context,
-transaction, verdict and an equation witnessing its actual `admission` result,
-followed by the remaining trace. These are traces of admission attempts:
-invalid proofs and stale certificates may appear as rejected steps, which leave
-state unchanged. Neither honest-wallet construction nor application-specific
-policies are required. Recovery instantiates this relation as
-`AccountRecovery.Chain.Admissions`; its `TracePolicy` is a separate theorem
-hypothesis, not part of the DSL's execution relation.
-
-The interpreter's `self` selects the account identity of locally built
-transactions. Admission checks the transaction's claimed identity against the
-supplied `Context.account`; the unrestricted trace does not impose a fixed
-account or monotone time. History properties needing either condition must
-state it as an environment premise.
+The current `Contract.Admissions` records certified transaction submissions,
+verdicts and equations witnessing actual `admit` results. Rejected steps
+preserve state; trace policies remain separate hypotheses. `Contract.self`
+fixes the receiving logical account identity, and each submission supplies time.
+The following `Interpreter` pseudocode describes the superseded prototype,
+not a module in the current tree.
 
 #### Constructing a Protocol from the programs
 
@@ -1708,7 +1724,16 @@ Manual review is the link to implementation, not a mechanised compiler theorem.
 Keep separate labels for design obligations, checked model theorems, resource
 assumptions, manual correspondence evidence, and executed implementation checks.
 
-## Generic ZK remediation roadmap
+## Historical generic ZK remediation roadmap
+
+This is the design and implementation log preserved at
+local commit `26ab5df` (inspect with `git show 26ab5df:docs/contract-specification-dsl.md`),
+before the certified-transaction port. Throughout this roadmap, “implemented”,
+“checked”, API names, source references and verification outputs refer to that
+historical snapshot. In particular `Interpreter`, `CommunicationScheme`,
+`ExactCommunication`, `El` and the old certificate API are not current exports.
+Use the Current core and experiment sections above for the current API.
+Historical heap measurements do not prescribe resources for this port.
 
 The adversarial reviews found valid but partially disconnected components:
 generic replay/safety proofs, an example-specific ideal privacy proof, and a

@@ -29,7 +29,7 @@ open import CategoricalCrypto.Protocol.Machine
 open import CategoricalCrypto.Protocol.Machine.Agree
 open import CategoricalCrypto.Protocol.Observe
 open import CategoricalCrypto.Strategy using (Strat; ask; out)
-open import CategoricalCrypto.UC.Machine.Run
+open import CategoricalCrypto.Machines.Run
 import CategoricalCrypto.UC.Model.Setup as UC
 open import CategoricalCrypto.UC.Model.Seal
 open import Midnight.ContractDSL.MidnightLedger
@@ -37,21 +37,24 @@ open import Midnight.ContractDSL.Observation
 open import Midnight.ContractDSL.Merkle
 open import Midnight.ContractDSL.MerkleFixture as Fixture hiding (a; b; c; d)
 open import Midnight.ContractDSL.Program midnight Assertion hiding (step; ledger)
-import Midnight.ContractDSL.Protocol as ProtocolDSL
-module DSL = ProtocolDSL midnight Assertion
+open import Midnight.ContractDSL.ObservedExecution midnight Assertion
+import Midnight.ContractDSL.Contract as Contracts
+import Midnight.ContractDSL.Experiment as Experiments
+import Midnight.ContractDSL.Experiment.Properties as ExperimentProperties
 
-contract : DSL.Contract
+contract : Contracts.Contract midnight Assertion
 contract = record
-  { Name = Variant ; Input = λ _ → FieldValue ; PublicArgs = λ _ → ⊤ ; Result = λ _ → ⊤
-  ; Witness = λ _ _ → Path × Bool ; publicArgs = λ _ _ → tt
-  ; body = λ _ v i → λ { (p , mask) → executionProgram classify v i p mask } }
+  { self = 0 ; EntryPoint = Variant
+  ; Input = λ _ → FieldValue × Path × Bool ; Result = λ _ → ⊤
+  ; body = λ _ v → λ { (i , p , mask) → executionProgram classify v i p mask } }
 
-module I = DSL.Interpreter contract (DSL.SimulatorCommunication.scheme contract) 0
-module O = I.Observation (λ _ → ⊤) (λ _ _ → tt)
+module I = Experiments.Runtime midnight Assertion contract (λ _ → ⊤) (λ _ _ → tt)
+module IP = ExperimentProperties midnight Assertion contract (λ _ → ⊤) (λ _ _ → tt)
+module O = I.PublicProjection (λ _ → ⊤) (λ _ _ → tt)
 open I using (Verdict; accepted; rejected)
 
--- The relation below is evaluated with the selected program, not the secure
--- interpreter's body. This common carrier keeps the observer interface fixed.
+-- Membership inputs remain private in this experiment's projected claim;
+-- certification still witnesses the complete core contract input.
 record PrivateExecution : Set where
   constructor execution
   field variant : Variant
@@ -77,7 +80,7 @@ makeExecution v i m = execution v (fieldValue i) m (findItem i)
   success = fixture-successful v i m
 
 data PrivateQuery : Set where
-  proveAndHide verify : I.Tx → PrivateQuery
+  proveAndHide verify : I.CertifiedDraft → PrivateQuery
   invalidVerify : PrivateQuery
 
 data ResourceAnswer : Set where
@@ -88,8 +91,8 @@ ResourceIf = ResourceAnswer ⇿ PrivateQuery
 
 idealStep : PrivateQuery → Calls unitᴵ (⊤ × ResourceAnswer)
 idealStep (proveAndHide tx) = coin uniform-Bool λ proofToken →
-  ret (tt , sealed proofToken (I.Statement.binding (I.Tx.claim tx)))
-idealStep (verify tx) = ret (tt , checked (I.verified tx))
+  ret (tt , sealed proofToken (I.Claim.artifact (I.publicClaim tx)))
+idealStep (verify tx) = ret (tt , checked true)
 idealStep invalidVerify = ret (tt , checked false)
 
 idealZKAndHiding : Protocol unitᴵ ResourceIf
@@ -119,19 +122,19 @@ History = Bool → PrivateExecution × PrivateExecution
 history : Variant → Bool → History
 history v world m = makeExecution v Fixture.a m , makeExecution v (second world) m
 
-record Prepared : Set where
-  constructor prepared
-  field publicClaim : I.Statement
+record PublicDraft : Set where
+  constructor publicDraft
+  field publicClaim : I.Claim
         proofInterface : Bool
         publicTrace : Trace
-open Prepared
+open PublicDraft
 
 data SessionQuery : Set where
   beginSession prepareFirst submitFirst prepareSecond submitSecond : SessionQuery
 
 data SessionAnswer : Set where
   ready : SessionAnswer
-  draft : Prepared → SessionAnswer
+  draft : PublicDraft → SessionAnswer
   outcome : Verdict → ⊤ → SessionAnswer
   refused : SessionAnswer
   diagnostic : O.PublicAnswer → SessionAnswer
@@ -145,24 +148,26 @@ data Session : Set where
   unopened : Session
   active : Bool → Phase → Session
 
--- This adapter retains only the simulator proof token; bridge owns account
--- authentication, replay and ledger state, exactly as in the safety system.
-backend : Protocol ResourceIf I.ZKIf
+-- The simulator token is an experiment resource; the bridge delegates replay
+-- and admission to the certified core contract.
+backend : Protocol ResourceIf I.ProofIf
 backend = record
   { St = Bool ; init = false ; step = λ token → λ
-      { (I.proveRequest tx) → call (proveAndHide tx) λ
-          { (sealed p c) → ret (p , I.verified tx) ; _ → dead }
+      { (I.certifyRequest tx) → call (proveAndHide tx) λ
+          { (sealed p c) → ret (p , true) ; _ → dead }
       ; (I.verifyRequest tx) → call (verify tx) λ
+          { (checked ok) → ret (token , ok) ; _ → dead }
+      ; I.invalidVerifyRequest → call invalidVerify λ
           { (checked ok) → ret (token , ok) ; _ → dead } } }
 
 core : Protocol ResourceIf I.ClientIf
-core = I.toProtocol ∘ᵖ (I.bridge (context 0 0) initial ∘ᵖ backend)
+core = I.client ∘ᵖ (I.bridge 0 initial ∘ᵖ backend)
 
 ClientState : Set
 ClientState = Session × St core
 
 sessionAnswer : Bool → O.PublicAnswer → SessionAnswer
-sessionAnswer token (O.prepared n r claim observed) = draft (prepared claim token observed)
+sessionAnswer token (O.prepared n r statement observed) = draft (publicDraft statement token observed)
 sessionAnswer token (O.admitted v) = outcome v tt
 sessionAnswer token answer = diagnostic answer
 
@@ -172,13 +177,13 @@ respond m next (st′ , answer) = ret ((active m next , st′) ,
 
 prepareExecution : PrivateExecution → Bool → Phase → St core → Calls ResourceIf (ClientState × SessionAnswer)
 prepareExecution e m next st = coin uniform-Bool λ c →
-  step core st (I.build (variant e) (item e) (pathWitness e , mask e) c) >>=ᶜ respond m next
+  step core st (I.prepareDraft (variant e) (item e , pathWitness e , mask e) c) >>=ᶜ respond m next
 
 prepareCall : History → Bool → Bool → Phase → St core → Calls ResourceIf (ClientState × SessionAnswer)
 prepareCall H m which = prepareExecution (if which then proj₂ (H m) else proj₁ (H m)) m
 
 submitCall : Bool → Phase → St core → Calls ResourceIf (ClientState × SessionAnswer)
-submitCall m next st = step core st I.submit >>=ᶜ respond m next
+submitCall m next st = step core st I.submitDraft >>=ᶜ respond m next
 
 client : History → Protocol ResourceIf SessionIf
 client H = record { St = ClientState ; init = unopened , init core ; step = clientStep }
@@ -196,10 +201,10 @@ assembled r H = client H ∘ᵖ resource r
 
 record View : Set where
   constructor view
-  field firstDraft : Prepared
+  field firstDraft : PublicDraft
         firstOutcome : Verdict
         firstResult : ⊤
-        secondDraft : Prepared
+        secondDraft : PublicDraft
         secondOutcome : Verdict
         secondResult : ⊤
 open View
@@ -232,8 +237,8 @@ ProgramHistoryPrivacy H K = (m : Bool) →
 
 data DraftRelated : I.Draft → I.Draft → Set where
   empty : DraftRelated nothing nothing
-  pending : {tx ty : I.Tx} → I.Tx.claim tx ≡ I.Tx.claim ty →
-    I.verified tx ≡ I.verified ty → DraftRelated (just tx) (just ty)
+  pending : {tx ty : I.CertifiedDraft} → I.publicClaim tx ≡ I.publicClaim ty →
+    DraftRelated (just tx) (just ty)
 
 data StateRelated : St (assembled idealResources (history secure false)) →
   St (assembled idealResources (history secure true)) → Set where
@@ -249,14 +254,16 @@ module Coupling (r : PrivacyResources) (H K : History) where
       (graft (client H) (resource r) (prepareExecution e m next (nothing , s , p)) tt)
       (graft (client K) (resource r) (prepareExecution f m next (nothing , s , p)) tt)
   prepare-coupled e f eq m next s p = flipped λ c →
-    reports c _ _ (cong (λ program → execute program s) (proj₂ eq)) refl refl
+    reports c _ _ (cong (λ program → execute program s) (proj₂ eq))
+      (execute-correct (executionProgram classify (variant e) (item e) (pathWitness e) (mask e)) s)
+      (execute-correct (executionProgram classify (variant f) (item f) (pathWitness f) (mask f)) s)
     where
     evaluatedPreparation : (e : PrivateExecution) (c : Bool) (run : ExecutionReport ⊤) →
       eval (executionProgram classify (variant e) (item e) (pathWitness e) (mask e)) s ≡ evaluation run →
       Calls ResourceIf (ClientState × SessionAnswer)
     evaluatedPreparation e c run ev =
-      graft I.toProtocol (I.bridge (context 0 0) initial ∘ᵖ backend)
-        (I.afterEvaluation (variant e) (item e) (pathWitness e , mask e) c s (trace run) (evaluation run) ev)
+      graft I.client (I.bridge 0 initial ∘ᵖ backend)
+        (I.afterEvaluation (variant e) (item e , pathWitness e , mask e) c s (trace run) (evaluation run) ev)
         (s , p) >>=ᶜ respond m next
 
     reports : (c : Bool) (run run′ : ExecutionReport ⊤) → run ≡ run′ →
@@ -268,12 +275,12 @@ module Coupling (r : PrivacyResources) (H K : History) where
     reports c (report observed (inj₁ err)) ._ refl ev ev′ =
       returned (related _ _ _ empty , refl)
     reports c (report observed (inj₂ (finished tt t j))) ._ refl ev ev′
-      rewrite seal-law r (proveAndHide (I.makeTx (variant e) (item e) (pathWitness e , mask e) c s tt t j ev))
-            | seal-law r (proveAndHide (I.makeTx (variant f) (item f) (pathWitness f , mask f) c s tt t j ev′)) =
+      rewrite seal-law r (proveAndHide (I.makeCertifiedDraft (variant e) (item e , pathWitness e , mask e) c s tt t j ev))
+            | seal-law r (proveAndHide (I.makeCertifiedDraft (variant f) (item f , pathWitness f , mask f) c s tt t j ev′)) =
       flipped λ proofToken → returned
-        (related _ _ _ (pending (cong (λ n → I.statement 0 n tt c j) (proj₁ eq)) refl) ,
-          cong (λ claim → draft (prepared claim proofToken observed))
-            (cong (λ n → I.statement 0 n tt c j) (proj₁ eq)))
+        (related _ _ _ (pending (cong (λ n → I.claim 0 n tt c j) (proj₁ eq))) ,
+          cong (λ claim → draft (publicDraft claim proofToken observed))
+            (cong (λ n → I.claim 0 n tt c j) (proj₁ eq)))
 
   step-public : ProgramHistoryPrivacy H K →
     ∀ s t → StateRelated s t → ∀ q →
@@ -284,24 +291,26 @@ module Coupling (r : PrivacyResources) (H K : History) where
     prepare-coupled (proj₁ (H m)) (proj₁ (K m)) (proj₁ (h m)) m firstPrepared ledger token
   step-public h s t (related (active m secondUnprepared) ledger token empty) prepareSecond =
     prepare-coupled (proj₂ (H m)) (proj₂ (K m)) (proj₂ (h m)) m secondPrepared ledger token
-  step-public h s t (related (active m firstUnprepared) ledger token rel@(pending eq ok)) prepareFirst =
+  step-public h s t (related (active m firstUnprepared) ledger token rel@(pending eq)) prepareFirst =
     flipped λ _ → returned (related _ _ _ rel , refl)
-  step-public h s t (related (active m secondUnprepared) ledger token rel@(pending eq ok)) prepareSecond =
+  step-public h s t (related (active m secondUnprepared) ledger token rel@(pending eq)) prepareSecond =
     flipped λ _ → returned (related _ _ _ rel , refl)
   step-public h s t (related (active m firstPrepared) ledger token empty) submitFirst =
     returned (related _ _ _ empty , refl)
   step-public h s t (related (active m secondPrepared) ledger token empty) submitSecond =
     returned (related _ _ _ empty , refl)
-  step-public h s t (related (active m firstPrepared) ledger token (pending {tx} {ty} eq ok)) submitFirst
+  step-public h s t (related (active m firstPrepared) ledger token (pending {tx} {ty} eq)) submitFirst
     rewrite seal-law r (verify tx) | seal-law r (verify ty)
-          | ok | I.finishAdmission-public (context 0 0) ledger tx ty eq (I.verified ty)
-    with I.finishAdmission (context 0 0) ledger ty (I.verified ty)
-  ... | ledger′ , verdict = returned (related _ ledger′ _ empty , refl)
-  step-public h s t (related (active m secondPrepared) ledger token (pending {tx} {ty} eq ok)) submitSecond
+          | IP.admissionAfterVerification-public 0 ledger tx ty eq true
+    with IP.admissionAfterVerification 0 ledger ty true
+  ... | ledger′ , accepted = returned (related _ ledger′ _ empty , refl)
+  ... | ledger′ , rejected = returned (related _ ledger′ _ empty , refl)
+  step-public h s t (related (active m secondPrepared) ledger token (pending {tx} {ty} eq)) submitSecond
     rewrite seal-law r (verify tx) | seal-law r (verify ty)
-          | ok | I.finishAdmission-public (context 0 0) ledger tx ty eq (I.verified ty)
-    with I.finishAdmission (context 0 0) ledger ty (I.verified ty)
-  ... | ledger′ , verdict = returned (related _ ledger′ _ empty , refl)
+          | IP.admissionAfterVerification-public 0 ledger tx ty eq true
+    with IP.admissionAfterVerification 0 ledger ty true
+  ... | ledger′ , accepted = returned (related _ ledger′ _ empty , refl)
+  ... | ledger′ , rejected = returned (related _ ledger′ _ empty , refl)
   step-public h s t (related unopened ledger token rel) prepareFirst = returned (related _ _ _ rel , refl)
   step-public h s t (related unopened ledger token rel) submitFirst = returned (related _ _ _ rel , refl)
   step-public h s t (related unopened ledger token rel) prepareSecond = returned (related _ _ _ rel , refl)
