@@ -21,8 +21,7 @@ Passport project.
   success and rejection, with rules for pure results, assertions, ledger operations
   and sequencing, and lifting through successful replay.
 - [`Contract`](src/Midnight/ContractDSL/Contract.agda): typed entry
-  points, evaluation-certified transactions, current-state admission and finite
-  admission traces.
+  points, evaluation-certified transactions, admission and traces.
 - [`AdmissionProperties`](src/Midnight/ContractDSL/AdmissionProperties.agda) proves
   various correctness properties.
 - [`Storage`](src/Midnight/ContractDSL/Storage.agda) defines a

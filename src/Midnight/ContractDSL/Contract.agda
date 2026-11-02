@@ -30,6 +30,11 @@ record Contract : Set₁ where
           certified : eval (body target entry input) view ≡ inj₂ execution
   open Transaction
 
+  record Submission : Set where
+    constructor submit
+    field now         : ℕ
+          transaction : Transaction
+
   build : (n : EntryPoint) → Input n → State → Error ⊎ Transaction
   build n a s with eval (body self n a) s in evaluated
   ... | inj₁ err = inj₁ err
@@ -39,16 +44,17 @@ record Contract : Set₁ where
   data Verdict : Set where
     accepted rejected : Verdict
 
-  admit : (now : ℕ) → State → Transaction → State × Verdict
-  admit now s tx = case target tx ≟ self of λ where
-    (no _)  → s , rejected
-    (yes _) → case replay now (journal (execution tx)) s of λ where
-      nothing  → s , rejected
-      (just t) → t , accepted
+  admit : State → Submission → State × Verdict
+  admit s q = let open Submission q in
+    case target transaction ≟ self of λ where
+      (no _)  → s , rejected
+      (yes _) → case replay now (journal (execution transaction)) s of λ where
+        nothing  → s , rejected
+        (just t) → t , accepted
 
   -- Attempts at one contract instance; slots, build views and order are
   -- unrestricted. Monotone time and scheduling policies are not assumed.
   data Admissions : State → State → Set where
     done : ∀ {s} → Admissions s s
-    next : ∀ {s u t} (now : ℕ) (tx : Transaction) (v : Verdict) →
-      admit now s tx ≡ (u , v) → Admissions u t → Admissions s t
+    next : ∀ {s u t} (q : Submission) (v : Verdict) →
+      admit s q ≡ (u , v) → Admissions u t → Admissions s t

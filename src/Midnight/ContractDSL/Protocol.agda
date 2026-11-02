@@ -17,11 +17,6 @@ open Contract C
 open Transaction
 open import Midnight.ContractDSL.Program L Assertion
 
-record Submission : Set where
-  constructor submit
-  field now         : ℕ
-        transaction : Transaction
-
 record Receipt : Set where
   constructor receipt
   field verdict      : Verdict
@@ -43,6 +38,6 @@ receiptFor tx rejected = receipt rejected []
 toProtocol : State → Protocol unitᴵ ContractIf
 toProtocol initial = record
   { St = State ; init = initial
-  ; step = λ s (submit now tx) →
-      let t , v = admit now s tx in ret (t , receiptFor tx v)
+  ; step = λ s q →
+      let t , v = admit s q in ret (t , receiptFor (Submission.transaction q) v)
   }
