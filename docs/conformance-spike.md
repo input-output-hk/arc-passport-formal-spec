@@ -45,24 +45,28 @@ block time, `IMPL_DIR` defaults to the `5d12798` worktree, and the mutation chec
 | `src/Conformance/AccountLedger.agda` | `Semantics` instance with fields round, auth_nonce, device_epoch, device_count, devices (set) and balances (map); `Uint` bounds; set/map equality up to order; decidable equality of ops |
 | `src/Conformance/Coins.agda` | `readCoins`/`stepCoins`/`runCoins`: runs closed protocols on an injected bit stream |
 | `src/Passport/AccountRecovery.agda` | Shared account entrypoints, authorisation/dispatch and intended `Contract`; circuit bodies live in `Conformance.Custody` and `Conformance.Recovery` |
-| `src/Conformance/Account.agda` | Bounded signers; wallet `Protocol`; `stepModel`; journal decidable equality; `decRel`; `decide`, consuming the shared contract assembly |
-| `src/Conformance/Main.agda` | Non-safe executable that binds the primitives and runs the line protocol |
+| `src/Conformance/Account.agda` | Bounded signers, wallet `Protocol` and `stepModel`, consuming the shared contract assembly |
+| `src/Conformance/Monitor.agda` | Typed invocation/frozen-admission triple checker |
+| `src/Conformance/CertificateDecision.agda` | Journal equality and decidable successful execution |
+| `src/Conformance/{Wire,Oracle,Main}.agda` | Bidirectional codecs, explicit crypto interpretation and executable transport |
 | `conformance/harness/*.ts` | Seeded driver (`main.ts`), simulator side (`impl.ts`), model subprocess (`model.ts`), PRNG, mutation check |
 
-All modules except `Main` are `--safe --without-K`. `Midnight.ContractDSL.*` is reused unchanged:
-`Program` (`eval`, `Journal`, `Error`), `Protocol` (`Contract`, `ExactCommunication`,
-`Interpreter.system/admission/makeTx`).
+The current model reuses core `Program` (`eval`, `Journal`, `Error`) and
+`Contract` (`build`, certified `Transaction`, `Submission`, `admit`) directly.
+Raw invalid evidence is rejected by the conformance adapter, outside core admission.
 
-- **Oracle 1 (execute and compare).** For each step the model runs `wallet ∘ᵖ system ctx s`.
-  The wallet signs on coins, then the client builds a proof, the bridge admits it and replays it.
+- **Oracle 1 (execute and compare).** The wallet signs using the supplied coins.
+  Its invocation adapter builds a certified transaction and admits it by replay.
   The model starts from its own previous post-state and consumes exactly the coin bits that
   the implementation's signer drew. The harness compares the verdict (including the abort
   reason), the signature `(R, s, grind)` bit for bit, the post-state, and whether any bits are left unread.
-- **Oracle 2 (decide).** `decide pre call post verdict` evaluates the circuit and checks the
-  certificate with `decRel`, a decision procedure for `Interpreter.Rel` that uses journal and
-  tuple decidable equality. It then runs `admission` and compares the result with the
-  implementation's post-state and verdict. An abort must carry the matching code and leave the
-  state unchanged. The `call` carries the implementation's own signature.
+- **Oracle 2 (observed transition).** The historical `decide` interface has been
+  replaced by `Conformance.Monitor.acceptable`; see the
+  [runtime API and serialization contract](conformance-recovery.md#runtime-transition-monitor).
+  Invocation observations evaluate the already-signed call, construct a model
+  certificate and run admission. Frozen-admission observations validate the
+  supplied journal against its original build view before replay. Both compare
+  the observed outcome and post-state; aborts must match their code and preserve state.
 
 ## Deviations from the brief
 
@@ -71,7 +75,7 @@ All modules except `Main` are `--safe --without-K`. `Midnight.ContractDSL.*` is 
    `Relation.Nullary.Decidable.Core.map′`: the copattern clause `proof (map′ …)` passes
    `does (map′ …)` as the implicit argument of `Reflects.of`, and `of` matches on that
    argument. The strict JS backend therefore recurses forever. Every ℕ `_≟_`/`_≤?_` goes
-   through `map′`, including `finishAdmission` in `Midnight.ContractDSL.Protocol`. Admission
+   through `map′`, including the old prototype's `Protocol.finishAdmission`. Admission
    cannot run under JS unless stdlib or `Midnight.*` is edited or the generated JS is patched,
    so the JS FFI probe was dropped. MAlonzo compiled and ran `SmokeMain` correctly.
 2. **The model calls the harness for primitives.** MAlonzo cannot call JS, so the compiled
@@ -125,8 +129,8 @@ All of them were harness or infrastructure faults; none was a model or implement
   - the `Bytes<32> as Field` failure above the field modulus (unreachable once the challenge
     is ground below r_J).
 - **Abort reasons** are compared by message substring.
-- **Historical oracle 2 checked the model's own journal.** `decide` builds its
-  statement from that journal. The recovery harness additionally verifies the
+- **Historical oracle 2 checked the model's own journal.** Its `decide` built
+  the statement from that journal. The recovery harness additionally verifies the
   implementation-produced public VM transcript; see
   [the recovery oracle boundary](conformance-recovery.md#caveats). It still does
   not translate the VM program into an Agda journal.
@@ -137,7 +141,7 @@ All of them were harness or infrastructure faults; none was a model or implement
   The DSL, the protocol stack, `Coins` and the oracles stay as they are.
 - `Coins.stepCoins` and `runCoins` work for any closed `Protocol` with coins, so any randomised
   client can be replayed against a recorded bit stream once its randomness is injectable.
-- `decide` is a generic recipe: `eval` + `decRel` + `admission` + state equality up to order.
+- The historical `decide` recipe was `eval` + `decRel` + `admission` + state equality up to order.
 - The pattern of compiling the model with MAlonzo and serving its primitives over RPC carries
   over to any implementation language.
 
@@ -162,7 +166,7 @@ iterations.
 1. **Complete journal correspondence.** The recovery harness can obtain and
    verify the simulator's `callProofDataTrace.publicTranscript`, including recorded
    reads. Translating its low-level stack/map operations into model `Event`s and
-   proving or testing that translation against `decRel` remain separate work.
+   proving or testing that translation against `decExecution` remain separate work.
 2. **Remove the shared oracle.** Bind the primitives to an independent implementation, for
    example `signer-rs` or a native Poseidon/jubjub library.
 3. **Widen the slice.**

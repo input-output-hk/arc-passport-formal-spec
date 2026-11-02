@@ -10,6 +10,43 @@ comparator uses source-shaped insertion; the intended contract fixes authority
 replacement. The [recovery specification](recovery-specification.md) describes
 the threat model and obligations. Historical numbers and transcripts below are
 not measurements of a repaired or deployed contract.
+For current executable integration, start at the
+[runtime transition monitor](#runtime-transition-monitor): checker, wire format,
+Haskell/C APIs, crypto backend and serialized implementation fixtures.
+
+The sections labelled historical predate the port to `main`'s certified-transaction
+API. The committed recovery baseline was `26ab5df`; the historical runtime-monitor and
+primitive-boundary records also describe the uncommitted work preserved with
+that baseline. Those working-tree snapshots were not given commit identities.
+The historical lock is not evidence for the rebased source or dependency pin.
+
+## Certified-transaction port verification
+
+The 2026-11-02 working-tree port rebases `feat/recovery-dsl` onto local `main`
+`42636b9`, retaining the `f280e04f` categorical-crypto source pin. The upstream
+library build was killed with exit 137 without a heap bound; setting its build
+`GHCRTS` to `-M8G -H1G` completed the same pinned source build.
+
+`src/Passport.agda` and compiled `Conformance.Main` passed under
+`LC_ALL=C.UTF-8`, `pagda --useUntracked false check`, and `-M3G -H1G`, with no
+warning-gate diagnostics. The compiled executable drove these simulator runs:
+
+| Implementation / model | Scenarios | Generated seed 1 | Random seed 1 |
+|---|---|---|---|
+| Source / source-shaped | 12/12, 79 steps, no divergence | 30 steps, no divergence | 34 steps, no divergence |
+| Source / corrected | 12/12, 79 steps, 2 expected divergences | 30 steps, 3 expected planted-use divergences | 34 steps, 1 expected divergence |
+| Repaired / corrected | 12/12, 79 steps, no divergence | 30 steps, no divergence | 34 steps, no divergence |
+
+Both source/source and repaired/corrected monitor runs passed 119 checks.
+These cover raw candidate rejection, frozen replay, nonzero logical account
+identities, target mismatch, and rejection atomicity. Freshly built typed Haskell,
+static C and shared C monitor consumers passed; the Haskell consumer also checked
+signed rotation and recovery submission through the real primitive backend for
+both implementations.
+
+The full pinned gate was not rerun or reenrolled; its historical lock remains
+unchanged. These results do not establish ZK verification, full ledger/effects
+authentication, or a Compact-transcript-to-Agda-journal refinement.
 
 ## Concrete repair boundary
 
@@ -53,11 +90,11 @@ Start at [`src/Passport.agda`](../src/Passport.agda), then follow:
    not a separate deployed recovery contract. There is one assembly; the
    prominent `contract` fixes corrected finalisation. `assemble sourceShaped`
    is available only as the historical conformance comparator.
-2. [`Interpreter.Admissions`](../src/Midnight/ContractDSL/Protocol.agda):
-   generic traces for any contract and communication scheme.
-   `AccountRecovery.Chain` instantiates the interpreter with the intended contract
-   and exact communication. Traces allow arbitrary contexts, ordering, certificate
-   build views, and accepted/rejected steps, without a wallet or TracePolicy premise.
+2. [`Contract.Admissions`](../src/Midnight/ContractDSL/Contract.agda):
+   generic traces of evaluation-certified transactions.
+   `AccountRecovery.Chain` instantiates the intended contract. Traces allow
+   arbitrary submission times, ordering, certificate build views, and
+   accepted/rejected steps, without a wallet or `TracePolicy` premise.
 3. [`RecoveryExecution`](../src/Conformance/RecoveryExecution.agda) and
    [`RecoveryAuthority`](../src/Conformance/RecoveryAuthority.agda):
    explicit advertised statements and qualified references to separate proofs.
@@ -74,7 +111,7 @@ route retain `--safe --without-K`.
 
 `accepted-recovery-trace-exclusion` starts from an **actual accepted**
 corrected finalisation, even if the prior device set was compromised, and then
-quantifies over finite actual Interpreter admission traces satisfying a separate
+quantifies over finite actual contract admission traces satisfying a separate
 `TracePolicy` hypothesis, including rejection and stale-view certificate replay.
 Compromised presented keys cannot gain
 current-epoch device authority at any counter; a companion theorem rules out
@@ -83,7 +120,7 @@ rejection.
 
 Assumptions are explicit: a fixed compromise set, key-entry separation across
 epochs/counters, a safe pending successor, and `TracePolicy` for the subsequent
-trace. Its `TransactionPolicy` requires every related certificate opening of
+trace. Its `TransactionPolicy` requires the certified input of
 every transaction (including rejected steps) to obey `InputPolicy`: opaque
 enrolments exclude **any** compromised-key epoch/counter encoding and recovery
 successors are uncompromised. This is a theorem hypothesis, not a restriction on
@@ -138,6 +175,295 @@ The representation still has explicit limits:
   the concrete curve interpretation, not to the unconstrained `Primitives` record.
 - Corrected `install` uses reset/insert/count-write to specify a singleton set.
   It is not the literal transcript of the stamped-map repair described above.
+
+## Runtime transition monitor
+
+Integration entry points: [Haskell facade](../conformance/monitor/Passport/Monitor.hs),
+[C header](../conformance/monitor/passport_monitor.h),
+[native build](../conformance/monitor/build.py),
+[Haskell example](../conformance/monitor/tests/HaskellSmoke.hs),
+[C example](../conformance/monitor/tests/c_smoke.c) and
+[fixture consumer](../conformance/harness/monitor.ts).
+
+[`Conformance.Monitor`](../src/Conformance/Monitor.agda) exposes
+`acceptable : State → Transition → State → Bool`, parameterized by the crypto
+primitives, the `Bytes32` challenge domain, and the finalisation variant.
+It does not generate signatures or consume wallet randomness.
+
+`Transition` distinguishes two observations:
+
+- **Invocation:** a raw, already-signed call, account/time context and observed
+  outcome. The checker evaluates the body, builds its model certificate and
+  runs same-view admission.
+- **Admission:** a frozen `Candidate`, account/time context and observed outcome.
+  A candidate contains its transaction account, original build state, raw call
+  and claimed journal. The checker validates that journal against the **build
+  state**, then submits the certified transaction through `Contract.admit` at the observation's
+  **initial state**. It never rebuilds the journal at admission time.
+
+`true` means the observed outcome **and final state** match the model. It can
+therefore confirm an accurately observed rejection or abort, not just an
+accepted transaction. Rejection must preserve state; an invocation abort must
+also match the normalized error code. Admission itself has no build-abort
+outcome. State comparison retains the model's unordered set/map equality.
+Agda's `Observed` is the Haskell/TypeScript `Outcome` and wire `OUTCOME`;
+the DSL's internal evaluation `Outcome` is a different type. Transition
+constructors place context before call/candidate and observed outcome.
+
+Candidates are ordinary serialized evidence, not trusted Agda proofs. Validation
+constructs an evaluation-certified transaction only after deciding the execution
+relation. Invalid evidence is rejected at this external validation boundary;
+it cannot inhabit the core `Contract.Transaction` type. The account result is
+unit. This is neither a Compact transaction decoder nor a ZK-proof verifier.
+The identity boundary is defined in [`Conformance.Monitor`](../src/Conformance/Monitor.agda):
+the natural-valued **logical account identity** selects `Contract.self`, while
+the candidate supplies its claimed target. The `Bytes32` module parameter `self`
+is the separate **challenge domain**. Core admission checks the target identity
+and replays at the submitted `now`.
+
+### Serialization and executable adapter
+
+[`Wire`](../src/Conformance/Wire.agda) supplies bidirectional codecs and command
+dispatch; [`Main`](../src/Conformance/Main.agda) supplies transport and its
+interactive crypto backend. The versioned token grammar is:
+
+```text
+monitor-v1 VARIANT SELF INITIAL call ACCOUNT TIME CALL OUTCOME FINAL
+monitor-v1 VARIANT SELF INITIAL admit ACCOUNT TIME CANDIDATE OUTCOME FINAL
+CANDIDATE = TX_ACCOUNT BUILD_STATE CALL J EVENT_COUNT EVENTS...
+OUTCOME = ok | refused | fail CODE
+```
+
+`VARIANT` is `source` or `corrected`. `ACCOUNT` and `TX_ACCOUNT` are natural-valued
+logical account identities; `SELF` is the separate 32-byte challenge domain.
+The one-account simulator adapter uses logical account identity zero.
+These are not interchangeable address encodings.
+The concrete simulator adapter interprets `TIME` as Unix time in seconds.
+
+[`Conformance.Wire`](../src/Conformance/Wire.agda) is the authoritative executable
+codec. [Haskell `Codec`](../conformance/monitor/Passport/Monitor/Codec.hs) and
+[TypeScript `wire.ts`](../conformance/harness/wire.ts) mirror that format.
+In the grammar below, `name:TYPE` labels a value, and `{n}` means exactly `n`
+repetitions; labels, braces and parentheses are not wire tokens. `INITIAL`,
+`FINAL` and `BUILD_STATE` are `STATE`; account identities, times and counts are
+`N`, `SELF` is `B32`, and `CODE` is one nonempty whitespace-free token.
+
+```text
+N = [0-9]+
+B32 = [0-9a-f]{64}
+B64 = [0-9a-f]{128}
+FLAG = 0 | 1
+POINT = x:N y:N
+PHI = 0 | 4 phi1:N phi2:N phi3:N phi4:N
+STATE =
+  round:N nonce:N epoch:N deviceCount:N
+  nDevices:N device:B32{nDevices}
+  nBalances:N (color:B32 amount:N){nBalances}
+  encKey:B32 recoveryPk:POINT phi:PHI phiLen:N session:B32 wrap:B64
+  pending:FLAG pendingEntry:B32 pendingRecoveryPk:POINT notBefore:N vetoWindow:N
+
+CALL = D color:B32 amount:N
+     | F
+     | U successor:POINT nextRecoveryPk:POINT expectedEpoch:N expectedNonce:N
+         nowUpper:N recoveryR:POINT recoveryS:N successorR:POINT successorS:N grind:N
+     | J GATED AUTH
+AUTH = pk:POINT useCounter:N R:POINT s:N grind:N
+GATED = W color:B32 amount:N recipient:B32
+      | A entry:B32 | R entry:B32 | K encKey:B32
+      | P recoveryPk:POINT session:B32 phi1:N phi2:N phi3:N phi4:N phiLen:N wrap:B64
+      | C
+
+EVENT = op OPERATION ARGUMENTS RESULT
+      | publish N
+      | require min N
+      | require max N
+EVENTS... = EVENT{EVENT_COUNT}
+```
+
+`D` deposits, `F` finalises recovery, `U` submits recovery, and `J` authorises a
+gated call. Gated tags mean withdraw, add device, remove device, rotate key,
+publish recovery session and cancel recovery, respectively. Journal operations
+use the exact case-sensitive ledger constructor names:
+
+| `OPERATION` | `ARGUMENTS` | `RESULT` |
+|---|---|---|
+| `readNonce`, `readRound`, `readEpoch`, `readDeviceCount`, `readVetoWindow`, `readNotBefore` | none | `count N` |
+| `readBalance` | `B32` | `count N` |
+| `readPending` | none | `flag FLAG` |
+| `deviceMember`, `balanceMember` | `B32` | `flag FLAG` |
+| `readRecoveryPk`, `readPendingRecoveryPk` | none | `point POINT` |
+| `readSession`, `readPendingEntry` | none | `bytes B32` |
+| `writeBalance` | `B32 N` | `unit -` |
+| `insertDevice`, `removeDevice`, `setEncKey`, `writeSession`, `writePendingEntry` | `B32` | `unit -` |
+| `resetDevices` | none | `unit -` |
+| `writeNonce`, `writeRound`, `writeEpoch`, `writeDeviceCount`, `writeNotBefore`, `writePhiLen`, `insertPhi1`, `insertPhi2`, `insertPhi3`, `insertPhi4` | `N` | `unit -` |
+| `writeRecoveryPk`, `writePendingRecoveryPk` | `POINT` | `unit -` |
+| `writePending` | `FLAG` | `unit -` |
+| `writeWrap` | `B64` | `unit -` |
+
+Parsing requires decimal naturals, exact lowercase byte-string widths, Boolean
+flags `0|1`, distinct set/map keys and complete input consumption. Normalization
+canonicalizes tokens and numbers, not collection order. Structural validity
+does not establish reachability, concrete ABI widths or curve-point validity.
+
+| Command | Result |
+|---|---|
+| `check OBSERVATION` | `= true` or `= false`; malformed input is `= error ...` |
+| `normalize OBSERVATION` | `= OBSERVATION` in canonical token form |
+| `prepare VARIANT SELF TX_ACCOUNT STATE CALL` | `= candidate CANDIDATE` or `= fail CODE` |
+| `step ...` | Existing wallet-generation oracle; separate from monitoring |
+
+There is no `decide` compatibility command. A crypto request from the executable
+is prefixed `? `; the host must supply the actual digest or affine-point reply.
+Malformed backend replies fail explicitly, never become conformance `false`.
+The in-process APIs below avoid this interactive transport.
+
+### Haskell and C integration
+
+[`Passport.Monitor`](../conformance/monitor/Passport/Monitor.hs) is the stable
+handwritten Haskell facade:
+
+```haskell
+checkObservation :: CryptoBackend -> Observation -> IO (Either MonitorError Bool)
+```
+
+Named domain types cover states, calls, outcomes, candidates, journal events and
+both transition kinds. `encodeObservation`/`decodeObservation` provide the wire
+roundtrip; `checkSerialized`, normalization and `prepareCandidate` are also
+exposed. The checker delegates to compiled Agda, not a second Haskell semantics.
+Generated MAlonzo symbol names remain private build glue.
+
+The explicit backend must implement the real entry/challenge hashes and curve
+operations. Malformed input, backend failure and internal failure are distinct
+from `Right False`; candidate preparation additionally reports `BuildAborted`.
+The pure Agda primitive record requires a narrow deterministic IO bridge in
+Haskell. It captures the backend per invocation, uses no global backend or
+stdin, and forces results before returning. Backends must be referentially
+transparent: pure evaluation may share results, so callback counts or mutable
+crypto state must not affect answers.
+
+#### Crypto request/reply protocol
+
+[`Conformance.Oracle`](../src/Conformance/Oracle.agda) defines the primitive
+interpretation. Requests are single whitespace-delimited lines using the same
+`N`, `B32`, `B64` and `POINT` encodings as above. Names label arguments here,
+not extra wire tokens:
+
+| Request | Reply |
+|---|---|
+| `entry self:B32 pk:POINT epoch:N counter:N` | `B32` |
+| `chal-w self:B32 R:POINT pk:POINT color:B32 amount:N recipient:B32 nonce:N grind:N` | `B32` |
+| `chal-add self:B32 R:POINT pk:POINT entry:B32 nonce:N grind:N` | `B32` |
+| `chal-rm self:B32 R:POINT pk:POINT entry:B32 nonce:N grind:N` | `B32` |
+| `chal-rot self:B32 R:POINT pk:POINT encKey:B32 nonce:N grind:N` | `B32` |
+| `chal-pub self:B32 R:POINT pk:POINT newRecoveryPk:POINT session:B32 phi1:N phi2:N phi3:N phi4:N phiLen:N wrap:B64 nonce:N grind:N` | `B32` |
+| `chal-cancel self:B32 R:POINT pk:POINT nonce:N grind:N` | `B32` |
+| `chal-submit self:B32 recoveryPk:POINT recoveryR:POINT successor:POINT successorR:POINT nextRecoveryPk:POINT postEpoch:N nonce:N nowUpper:N grind:N` | `B32` |
+| `mulg scalar:N` | `POINT` |
+| `mul point:POINT scalar:N` | `POINT` |
+| `add left:POINT right:POINT` | `POINT` |
+
+Digest byte order is the implementation's byte order; challenge numeric
+interpretation is little-endian. Replies are raw tokens, without the executable's
+`? ` or `= ` prefixes. Backend failures use the Haskell `Left`/C callback error
+channel, not a substitute digest or point.
+
+The reference [backend command](../conformance/harness/oracle.ts) uses
+[`answerPrimitive`](../conformance/harness/model.ts) and the selected real Compact
+implementation. It reads bare requests from stdin and writes bare replies.
+`haskell-smoke --real OBSERVATION_FILE BACKEND_EXECUTABLE [ARG...]` connects this
+backend through explicitly owned pipes; the fixture commands below include a
+runnable example.
+
+#### C ownership and native build
+
+[`passport_monitor.h`](../conformance/monitor/passport_monitor.h) exposes
+`passport_monitor_check`, `passport_monitor_normalize`,
+`passport_monitor_prepare` and `passport_monitor_free`. C callers initialize the
+GHC RTS, supply length-delimited UTF-8 and an explicit callback/userdata pair,
+and free every library-owned output with `passport_monitor_free`. The header
+specifies status codes, borrowed callback-buffer lifetimes and concurrency
+requirements; no Haskell exception crosses this boundary.
+
+Build from the repository/worktree root:
+
+```sh
+python3 conformance/monitor/build.py
+```
+
+The script discovers the project GHC environment, generates private bindings,
+and builds static/shared libraries plus Haskell and C consumers under
+`_build/monitor`. [`HaskellSmoke.hs`](../conformance/monitor/tests/HaskellSmoke.hs)
+and [`c_smoke.c`](../conformance/monitor/tests/c_smoke.c) are executable usage
+examples, including failure handling and C output ownership.
+
+### Implementation fixtures and replay boundary
+
+The harness's [`fixtures.ts`](../conformance/harness/fixtures.ts) couples a
+serialized model observation with a full concrete simulator snapshot and its
+execution context. The consumer checks the snapshot's model projection against
+the supplied initial state and derives implementation arguments from the raw
+call; it does not substitute a fresh state or re-sign the call.
+
+The snapshot preserves address, logical account identity, time, coin public key
+and the complete account `StateValue`, including fields omitted by the model.
+Its `default-simulator-v1` environment explicitly fixes external balances,
+remaining block fields and commitment indices to the pinned simulator defaults,
+private state to empty, the `held_coin` witness to zero and the cost model to
+the initial one. This is not arbitrary `ContractState`/Zswap reconstruction.
+
+After compiling `Main` with the [model build command](#pinned-repeatable-gate),
+export `IMPL_DIR` as the absolute implementation `contract/` directory and
+`MODEL_BIN` as the absolute compiled `Main` path. From the worktree root:
+
+```sh
+RECOVERY_IMPLEMENTATION=source "$IMPL_DIR/node_modules/.bin/tsx" \
+  conformance/harness/monitor.ts checks --fixtures _build/monitor/example-fixtures
+RECOVERY_IMPLEMENTATION=source "$IMPL_DIR/node_modules/.bin/tsx" \
+  conformance/harness/monitor.ts consume \
+  _build/monitor/example-fixtures/model-signed-rotate.json
+_build/monitor/haskell-smoke --real \
+  _build/monitor/example-fixtures/model-signed-rotate.observation \
+  "$IMPL_DIR/node_modules/.bin/tsx" conformance/harness/oracle.ts
+```
+
+Choose a fresh fixture directory: emission refuses to overwrite existing cases.
+For the stamped-map implementation, select its directory and
+`RECOVERY_IMPLEMENTATION=repaired`; the monitor variant becomes `corrected`.
+
+Frozen model candidates and frozen concrete VM transcripts remain separate
+evidence. The replay runner does not rebuild either at admission, and does not
+resynchronize after discrepancies. Reachable intervening calls are distinguished
+from synthetic field mutations. VM replay checks the recorded state operations
+and applicable time conditions, but is **not full transaction admission**:
+changing declared unshielded-input effects can still pass `runTranscript`.
+Neither coin-effect validity nor a VM-transcript-to-Agda-journal refinement is
+established by this monitor.
+
+### Historical runtime monitor verification
+
+Before the certified-transaction port, the uncommitted runtime-monitor package passed:
+
+- `Passport.agda` closure and compiled `Main`; the warning gate and zero
+  escape-hatch baseline remained unchanged.
+- The documented native-library build, typed Haskell consumer and linked static
+  and shared C consumers: model agreement/disagreement, serialization, frozen
+  admission, malformed input, backend errors, callback isolation and ownership.
+- Real signed-rotation and recovery-submission Haskell checks through the
+  implementation crypto backend, for both source and repaired implementations.
+- Source/source and repaired/corrected monitor runs: 114 checks each, including
+  14 serialized fixture roundtrips and 10 frozen replay cases per run.
+- The standalone fixture consumer on a serialized signed-rotation case;
+  both actual-result conformance and supplied expected result matched.
+- Historical source scenarios with the migrated monitor: 12/12 and 79 steps for
+  each variant; zero source/source discrepancies and exactly the two annotated
+  source/corrected discrepancies.
+- Strict harness TypeScript checking and gate-script syntax checking.
+
+The tests retain the effects-authentication negative control above. The full
+historical pinned gate was **not** rerun or reenrolled. Its inventory now includes
+the monitor and native consumers; changed inputs/schema require explicit
+reviewed enrollment to a new lock filename. Historical locks were not changed.
 
 ## Pinned repeatable gate
 
@@ -225,16 +551,16 @@ the default historical path is a convenience, not the pinned gate interface.
 | Current package route | Role |
 |---|---|
 | `src/Passport.agda` | Specification, advertised property, and supporting proof/semantic navigation |
-| `Passport.AccountRecovery` / `Midnight.ContractDSL.Protocol.Interpreter.Admissions` | Intended shared contract and generic admission traces instantiated by its `Chain`; post-bootstrap boundary |
+| `Passport.AccountRecovery` / `Midnight.ContractDSL.Contract.Admissions` | Intended shared contract and generic admission traces instantiated by its `Chain`; post-bootstrap boundary |
 | `Conformance.RecoveryAuthority` / `RecoveryExecution` | Checked public claims; their `Definitions` modules expose assumptions/guards, and `Proof` modules implement the proofs |
 | `conformance/harness/impl.ts` / `driver.ts` | Source/repaired simulator modes, effective authority projections, both transition oracles, and implementation VM transcript verification |
 | `conformance/harness/recovery.ts` / `mutation.ts` | Scenarios, generated post-finalisation planted use, random histories, and isolated deliberate model mutations |
 | `conformance/harness/gate.mjs` / `recovery-pins.json` | Trusted enrollment and repeat-run validation against fixed source/tool/dependency/seed baselines |
 | `conformance/recovery-gate-lock.json` | Exact enrolled working-tree/binary/harness/artifact snapshot |
 
-## Exercised package results
+## Historical exercised package results
 
-The complete pinned gate passed with enrollment lock
+Before the certified-transaction port, the complete pinned gate passed with enrollment lock
 `conformance/recovery-gate-lock.json`, SHA-256
 `890de710a603492af33ec04dc047893faf65caf0aed69aa94165788e65b97f83`.
 The repaired account source is pinned at
@@ -291,9 +617,9 @@ This is scenario evidence for the reorganised model, **not** a repeat of the
 full pinned gate, a repaired-implementation run, or a new enrollment snapshot.
 The historical gate locks and results above were not overwritten.
 
-### Primitive-boundary refactor evidence
+### Historical primitive-boundary refactor evidence
 
-A temporary compiled consumer built an actual
+Before the certified-transaction port, a temporary compiled consumer built an actual
 `AccountRecovery.Chain.makeTx` deposit certificate at round 0, with balance 10
 and deposit amount 3, then submitted that same certificate through `admission`:
 
@@ -362,7 +688,7 @@ This appendix preserves the **pre-repair, pre-gate measurements and setup**.
 Its 379-step totals, static random annotations, source-only inventory, and cost
 figures do not describe the current package. Use
 [the pinned gate](#pinned-repeatable-gate) and
-[current results](#exercised-package-results) above for current execution.
+[historical results](#historical-exercised-package-results) above for recorded execution.
 
 ### Original result
 
@@ -493,6 +819,9 @@ Current repaired setup uses the explicit path/mode commands above and below.
 
 ### Original model and harness inventory
 
+This records the historical layout. The current checker split and interfaces
+are described in [Runtime transition monitor](#runtime-transition-monitor).
+
 | File | Role |
 |---|---|
 | `src/Conformance/Primitives.agda` | Crypto record. Adds `Bytes64`, `zero32`, the add/remove/rotate/publish/cancel/submit challenges, and `fieldOrder` |
@@ -509,7 +838,7 @@ Current repaired setup uses the explicit path/mode commands above and below.
 - **Time.** `recover_submit`'s `!blockTimeGreaterThan(now_upper)` becomes
   `atChain (timeAtMost now_upper)`, and `recover_finalise`'s `!blockTimeLessThan(pending_not_before)`
   becomes `atChain (timeAtLeast pending_not_before)`. Admission therefore replays them against the
-  activation's `Context.time`. `stepModel` and `decide` take that time, and the harness passes the
+  submission's `now`. `stepModel` and `decide` take that time, and the harness passes the
   simulator's `time` for the same call. The two assert messages map to the settlement
   `refused`.
 - **Corrected comparison.** A corrected finalisation drops the entries that the implementation
