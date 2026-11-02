@@ -13,16 +13,18 @@ advertised properties.
 [reviewer instructions](docs/agents/readability-reviewer.md) define its execution.
 
 [Recovery assurance](docs/conformance-recovery.md) records the concrete repair,
-checked corrected-model device-authority results, and pinned executable gate.
+corrected-model device-authority results and historical pinned gate evidence.
 Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
 [`AccountRecovery.contract`](src/Passport/AccountRecovery.agda) →
-[`Interpreter.Admissions`](src/Midnight/ContractDSL/Protocol.agda) (instantiated as `AccountRecovery.Chain`) →
+[`Contract.Admissions`](src/Midnight/ContractDSL/Contract.agda) (instantiated as `AccountRecovery.Chain`) →
 the advertised execution and authority properties. This is the post-bootstrap
 recovery-relevant **shared account** slice, not a separate deployed contract.
 The [recovery specification](docs/recovery-specification.md) states the guard,
 initial-safety and separate trace-policy assumptions and remaining obligations.
 The [conformance plan](docs/conformance-testing-plan.md)
 and [historical custody spike](docs/conformance-spike.md) provide supporting context.
+The [runtime transition monitor](docs/conformance-recovery.md#runtime-transition-monitor)
+provides the triple checker, serialization, Haskell/C APIs and implementation fixtures.
 
 ## References
 
@@ -38,15 +40,16 @@ and [historical custody spike](docs/conformance-spike.md) provide supporting con
 - [`Program`](src/Midnight/ContractDSL/Program.agda): sequential programs, assertions,
   explicit publication events, deferred time conditions, evaluation and ordered replay.
 - [`Properties`](src/Midnight/ContractDSL/Properties.agda): successful replay
-  agrees with re-evaluation; successful evaluation replays on its own view when
-  its time conditions hold.
+  agrees with re-evaluation; same-view replay succeeds when time conditions hold;
+  `replay-eligible` proves all time conditions of an accepted journal hold.
 - [`Hoare`](src/Midnight/ContractDSL/Hoare.agda): outcome predicates covering
   success and rejection, with rules for pure results, assertions, ledger operations
-  and sequencing, and lifting through successful replay.
+  and sequencing, successful-bind decomposition (`bind-success`), and replay lifting.
 - [`Contract`](src/Midnight/ContractDSL/Contract.agda): typed entry
   points, evaluation-certified transactions, admission and traces.
-- [`AdmissionProperties`](src/Midnight/ContractDSL/AdmissionProperties.agda) proves
-  various correctness properties.
+- [`AdmissionProperties`](src/Midnight/ContractDSL/AdmissionProperties.agda):
+  same-view admission, accepted execution and time eligibility (`accepted-eligible`),
+  rejection atomicity and invariant preservation across admissions.
 - [`Protocol`](src/Midnight/ContractDSL/Protocol.agda): transaction submission,
   publication receipts, and protocol reachability and invariant preservation.
 - [`Storage`](src/Midnight/ContractDSL/Storage.agda) defines a

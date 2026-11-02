@@ -2,8 +2,9 @@
 // Recovery conformance gate; all implementation/model/tool paths are explicit.
 // `pin` is trusted enrollment of a reviewed snapshot constrained by recovery-pins.json,
 // not authorization to bless arbitrary source or dependencies. `run` revalidates the
-// lock, recompiles pinned contracts, then executes source/repaired attack histories
-// and isolated deadline/debit mutations. Simulator evidence is not deployment proof.
+// lock, recompiles pinned contracts, then executes source/repaired attack histories,
+// monitor/fixture/frozen-replay checks, linked Haskell/C consumers and isolated
+// deadline/debit mutations. Simulator evidence is not deployment proof.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { accessSync, constants, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -66,7 +67,8 @@ function command(bin, args, cwd, env = process.env, capture = false) {
 }
 function equal(label, actual, expected) {
   if (JSON.stringify(actual) !== JSON.stringify(expected))
-    throw new Error(`pin mismatch: ${label}\nexpected ${JSON.stringify(expected)}\nactual   ${JSON.stringify(actual)}`);
+    throw new Error(`pin mismatch: ${label}\nexpected ${JSON.stringify(expected)}\nactual   ${JSON.stringify(actual)}`
+      + (label === 'complete recovery input snapshot' ? '\nSource/tool/inventory changes require explicit reviewed reenrollment with pin --output NEW_LOCK.json; historical locks are never overwritten.' : ''));
 }
 function implementation(root, role) {
   const revision = command('git', ['-C', root, 'rev-parse', 'HEAD'], SPEC, process.env, true);
@@ -96,14 +98,19 @@ function snapshot() {
   equal('Compact compiler installation', compiler, BASE.compiler);
   equal('Node version', process.version, BASE.nodeVersion);
   equal('Node executable', fileHash(process.execPath), BASE.node);
-  const harness = Object.fromEntries(['gate.mjs', 'recovery-pins.json', 'recovery.ts', 'mutation.ts', 'package.json', 'driver.ts', 'impl.ts', 'model.ts', 'main.ts', 'prng.ts']
-    .map((name) => [name, fileHash(join(HARNESS, name))]));
+  const harness = Object.fromEntries(['gate.mjs', 'recovery-pins.json', 'recovery.ts', 'mutation.ts', 'package.json', 'driver.ts', 'impl.ts', 'model.ts', 'main.ts', 'prng.ts',
+    'wire.ts', 'concrete.ts', 'fixtures.ts', 'replay.ts', 'monitor.ts', 'oracle.ts'].map((name) => [name, fileHash(join(HARNESS, name))]));
   const model = {
     binary: fileHash(paths.model), sources: treeHash(join(SPEC, 'src'), true),
     buildInputs: Object.fromEntries(['flake.nix', 'flake.lock', 'pagda.nix', 'arc-passport.agda-lib'].map((name) => [name, fileHash(join(SPEC, name))])),
     pagda: fileHash(paths.pagda), agda: treeHash(join(SPEC, '.pagda/agda')), checkEnv: fileHash(join(SPEC, '.pagda/check-env')),
   };
-  return { schema: 1, source, repaired, compiler, node: { version: process.version, binary: fileHash(process.execPath) }, model, harness, settings: BASE.settings };
+  const commandInventory = ['recovery-source-source', 'recovery-source-corrected-projection', 'recovery-repaired-corrected',
+    'monitor-source-source', 'monitor-repaired-corrected', 'haskell-smoke', 'c-smoke-static', 'c-smoke-shared',
+    'haskell-real-signed-rotate-source', 'haskell-real-recovery-submit-source',
+    'haskell-real-signed-rotate-repaired', 'haskell-real-recovery-submit-repaired', ...BASE.settings.mutations.map((name) => `mutation-${name}`)];
+  return { schema: 2, source, repaired, compiler, node: { version: process.version, binary: fileHash(process.execPath) }, model, harness,
+    monitorSources: treeHash(join(SPEC, 'conformance/monitor')), commandInventory, settings: BASE.settings };
 }
 
 const actual = snapshot();
@@ -134,10 +141,18 @@ if (mode === 'pin') {
             fileHash(join(paths[role], 'contracts/managed', name, 'contract', artifact)));
       }
     }
+    command('python3', [join(SPEC, 'conformance/monitor/build.py'), '--pagda', paths.pagda, '--check-env', join(SPEC, '.pagda/check-env')], SPEC);
+    for (const name of ['haskell-smoke', 'c-smoke-static', 'c-smoke-shared'])
+      command(join(SPEC, '_build/monitor', name), [], SPEC);
     for (const role of ['source', 'repaired']) {
       const env = { ...process.env, IMPL_DIR: paths[role], MODEL_BIN: paths.model, PAGDA_BIN: paths.pagda, RECOVERY_IMPLEMENTATION: role, LC_ALL: 'C.UTF-8' };
       command(join(paths[role], 'node_modules/.bin/tsx'), [join(HARNESS, 'recovery.ts'), '--implementation', role,
         '--variant', role === 'source' ? 'both' : 'corrected', '--only', 'all', '--seeds', BASE.settings.seeds.join(','), '--steps', String(BASE.settings.randomSteps)], HARNESS, env);
+      const fixtureDir = join(compiled, `${role}-monitor-fixtures`);
+      command(join(paths[role], 'node_modules/.bin/tsx'), [join(HARNESS, 'monitor.ts'), 'checks', '--fixtures', fixtureDir], HARNESS, env);
+      for (const name of ['model-signed-rotate', 'model-recovery-submit'])
+        command(join(SPEC, '_build/monitor/haskell-smoke'), ['--real', join(fixtureDir, `${name}.observation`),
+          join(paths[role], 'node_modules/.bin/tsx'), join(HARNESS, 'oracle.ts')], HARNESS, env);
     }
     for (const name of BASE.settings.mutations) {
       const env = { ...process.env, IMPL_DIR: paths.source, MODEL_BIN: paths.model, PAGDA_BIN: paths.pagda, RECOVERY_IMPLEMENTATION: 'source', LC_ALL: 'C.UTF-8' };

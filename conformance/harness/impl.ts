@@ -10,11 +10,17 @@ import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { Prng } from './prng.ts';
+import { captureState, type ConcreteSnapshot } from './concrete.ts';
 
 export const IMPL_DIR =
   process.env.IMPL_DIR ?? fileURLToPath(new URL('../../../arc-passport-recovery-conformance/contract', import.meta.url));
 
 // The slice of the implementation's API the harness drives.
+export interface RuntimeState { encode(): unknown; toString(): string }
+export interface CircuitContext {
+  callContext: { currentQueryContext: QueryContext; currentGasCost: unknown };
+  costModel: unknown;
+}
 export interface Point { x: bigint; y: bigint }
 export type ChallengeBuilder = (sigR: Point, grindNonce: bigint) => Uint8Array;
 export interface CallContext { contractAddress: Uint8Array; authNonce: bigint }
@@ -33,12 +39,12 @@ export interface RecoverSubmitAuthorisation {
 export type RecoverSubmitChallengeBuilder = (sigRRecovery: Point, sigRSuccessor: Point, grindNonce: bigint) => Uint8Array;
 interface AlignedValue { value: Uint8Array[]; alignment: unknown[] }
 type TranscriptOp = string | { popeq: { cached: boolean; result: AlignedValue } } | Record<string, unknown>;
-interface QueryContext {
+export interface QueryContext {
   state: unknown;
   effects: unknown;
   runTranscript(transcript: { gas: unknown; effects: unknown; program: TranscriptOp[] }, costModel: unknown): QueryContext;
 }
-interface CircuitResult {
+export interface CircuitResult {
   context: {
     callContext: { currentQueryContext: QueryContext; currentGasCost: unknown };
     costModel: unknown;
@@ -79,9 +85,10 @@ interface RawLedger {
 type Phi = readonly [bigint, bigint, bigint, bigint];
 export interface Impl {
   rt: {
+    StateValue: { decode(value: unknown): RuntimeState };
     createConstructorContext(privateState: object, coinPk: { bytes: Uint8Array }): unknown;
     createCircuitContext(name: string, address: string, coinPk: { bytes: Uint8Array }, state: unknown, privateState: object,
-      a: undefined, b: undefined, c: undefined, time: number): unknown;
+      a: undefined, b: undefined, c: undefined, time: number): CircuitContext;
     convertNumericToJubjubScalar(k: bigint): bigint;
     ecMulGenerator(k: bigint): Point;
     ecMul(p: Point, k: bigint): Point;
@@ -178,19 +185,35 @@ export function encodeState(v: LedgerView): string {
 /** Parse an encoded state from `tokens` starting at `at`; returns the view and the next index. */
 export function decodeState(tokens: string[], at: number): [LedgerView, number] {
   let i = at;
-  const n = () => BigInt(tokens[i++]);
-  const s = () => tokens[i++];
+  const n = () => {
+    const token = tokens[i++];
+    if (token === undefined || !/^[0-9]+$/.test(token)) throw new Error('invalid state natural');
+    return BigInt(token);
+  };
+  const bytes = (size: number) => {
+    const token = tokens[i++];
+    if (token === undefined || !new RegExp(`^[0-9a-f]{${size * 2}}$`).test(token)) throw new Error(`invalid state Bytes${size}`);
+    return token;
+  };
+  const count = () => {
+    const value = n();
+    if (value > BigInt(tokens.length - i)) throw new Error('invalid state collection length');
+    return Number(value);
+  };
   const pt = (): Point => ({ x: n(), y: n() });
   const round = n(), authNonce = n(), deviceEpoch = n(), deviceCount = n();
-  const devices = Array.from({ length: Number(n()) }, s);
-  const balances = Array.from({ length: Number(n()) }, (): [string, bigint] => {
-    const color = s();
-    return [color, n()];
-  });
-  const encKey = s();
+  const devices = Array.from({ length: count() }, () => bytes(32));
+  if (new Set(devices).size !== devices.length) throw new Error('duplicate device');
+  const balances = Array.from({ length: count() }, (): [string, bigint] => [bytes(32), n()]);
+  if (new Set(balances.map(([key]) => key)).size !== balances.length) throw new Error('duplicate balance key');
+  const encKey = bytes(32);
   const recoveryPk = pt();
-  const phi = Array.from({ length: Number(n()) }, n);
-  const phiLen = n(), session = s(), wrap = s(), pending = n() === 1n, pendingEntry = s();
+  const phiCount = count();
+  if (phiCount !== 0 && phiCount !== 4) throw new Error('invalid phi shape');
+  const phi = Array.from({ length: phiCount }, n);
+  const phiLen = n(), session = bytes(32), wrap = bytes(64), flag = tokens[i++];
+  if (flag !== '0' && flag !== '1') throw new Error('invalid pending flag');
+  const pending = flag === '1', pendingEntry = bytes(32);
   const pendingRecoveryPk = pt();
   const pendingNotBefore = n(), vetoWindow = n();
   return [{
@@ -264,8 +287,6 @@ export type Verdict = { ok: true; transcript?: TranscriptEvidence } | { ok: fals
 
 /** `ok`, `refused` (a chain-time assert) or `fail CODE`: the model's settlement format. */
 export const settled = (v: Verdict): string => (v.ok ? 'ok' : v.code === 'refused' ? 'refused' : `fail ${v.code}`);
-/** The verdict as Oracle 2 observes it. */
-export const observed = (v: Verdict): string => (v.ok ? 'ok' : `fail ${v.code}`);
 
 /** Verify the implementation-produced VM program and its recorded reads, not a model journal. */
 export function verifyTranscript(result: CircuitResult, circuit: string): TranscriptEvidence {
@@ -328,6 +349,7 @@ export interface Account {
   now: number;
   view(): LedgerView;
   call(name: string, ...args: unknown[]): Promise<Verdict>;
+  snapshot(): ConcreteSnapshot;
 }
 
 export interface AccountOptions {
@@ -357,9 +379,35 @@ function eligibleDevices(l: RawLedger): string[] {
   return active;
 }
 
+/** Explicit source/repaired observation; never applies corrected retained-entry masking. */
+export function projectState(impl: Impl, state: unknown): LedgerView {
+  const l = impl.ledger(state);
+  const phiMap = new Map([...l.recovery_phi]);
+  const phi = phiMap.size === 0 ? [] : [1n, 2n, 3n, 4n].map((k) => {
+    const value = phiMap.get(k);
+    if (value === undefined || phiMap.size !== 4) throw new Error('recovery_phi outside the modelled shapes');
+    return value;
+  });
+  if (l.recovery_version !== 1n) throw new Error(`unmodelled recovery_version ${l.recovery_version}`);
+  return {
+    round: l.round, authNonce: l.auth_nonce, deviceEpoch: l.device_epoch, deviceCount: l.device_count,
+    devices: eligibleDevices(l), balances: [...l.unshielded_balances].map(([c, a]): [string, bigint] => [hex(c), a]),
+    encKey: hex(l.enc_key), recoveryPk: l.recovery_pk, phi, phiLen: l.recovery_phi_len,
+    session: hex(l.recovery_session), wrap: hex(l.recovery_wrap), pending: l.pending_recovery,
+    pendingEntry: hex(l.pending_entry), pendingRecoveryPk: l.pending_recovery_pk,
+    pendingNotBefore: l.pending_not_before, vetoWindow: l.veto_window,
+  };
+}
+
+export function abortVerdict(error: unknown): Verdict {
+  const message = error instanceof Error ? error.message : String(error);
+  const hit = ABORT_CODES.find(([needle]) => message.includes(needle));
+  return { ok: false, code: hit ? hit[1] : 'other', message };
+}
+
 /** Deploy an account into the simulator and activate a jubjub owner device. */
 export async function openAccount(impl: Impl, prng: Prng, opts: AccountOptions): Promise<Account> {
-  const { rt, ledger, Contract, signer } = impl;
+  const { rt, Contract, signer } = impl;
   const contract = new Contract({
     held_coin: (ctx: { privateState: unknown }) => [ctx.privateState, { nonce: ZERO32, color: ZERO32, value: 0n, mt_index: 0n }],
   });
@@ -372,47 +420,18 @@ export async function openAccount(impl: Impl, prng: Prng, opts: AccountOptions):
     opts.recoveryPk, prng.bytes(64), opts.vetoWindow);
   let state: unknown = init.currentContractState;
 
-  const view = (): LedgerView => {
-    const l = ledger(state);
-    const phiMap = new Map([...l.recovery_phi]);
-    const phi = phiMap.size === 0 ? [] : [1n, 2n, 3n, 4n].map((k) => {
-      const v = phiMap.get(k);
-      if (v === undefined || phiMap.size !== 4) throw new Error(`recovery_phi outside the modelled shapes: ${[...phiMap.keys()]}`);
-      return v;
-    });
-    if (l.recovery_version !== 1n) throw new Error(`recovery_version ${l.recovery_version} (modelled as the constant 1)`);
-    return {
-      round: l.round,
-      authNonce: l.auth_nonce,
-      deviceEpoch: l.device_epoch,
-      deviceCount: l.device_count,
-      devices: eligibleDevices(l),
-      balances: [...l.unshielded_balances].map(([c, a]): [string, bigint] => [hex(c), a]),
-      encKey: hex(l.enc_key),
-      recoveryPk: l.recovery_pk,
-      phi,
-      phiLen: l.recovery_phi_len,
-      session: hex(l.recovery_session),
-      wrap: hex(l.recovery_wrap),
-      pending: l.pending_recovery,
-      pendingEntry: hex(l.pending_entry),
-      pendingRecoveryPk: l.pending_recovery_pk,
-      pendingNotBefore: l.pending_not_before,
-      vetoWindow: l.veto_window,
-    };
-  };
+  const view = (): LedgerView => projectState(impl, state);
 
   const acct: Account = {
     addressHex, address, owner, now: opts.time, view,
+    snapshot: () => captureState(state, addressHex, hex(coinPk.bytes), acct.now),
     async call(name: string, ...args: unknown[]): Promise<Verdict> {
       const ctx = rt.createCircuitContext(name, addressHex, coinPk, state, {}, undefined, undefined, undefined, acct.now);
       let res: CircuitResult;
       try {
         res = await contract.impureCircuits[name](ctx, ...args);
       } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
-        const hit = ABORT_CODES.find(([needle]) => message.includes(needle));
-        return { ok: false, code: hit ? hit[1] : 'other', message };
+        return abortVerdict(e);
       }
       const transcript = verifyTranscript(res, name);
       state = res.context.callContext.currentQueryContext.state;

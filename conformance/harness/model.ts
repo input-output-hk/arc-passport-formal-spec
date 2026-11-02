@@ -3,9 +3,10 @@
 // `= <answer>`; the primitives are answered here by the implementation's own pure
 // circuits and compact-runtime (the accepted shared-oracle caveat).
 //
-// Requests (see src/Conformance/Main.agda):
-//   step   VARIANT SELF TIME <state> <request> B <bits|->
-//   decide VARIANT SELF TIME <state> <call> <state> <ok | fail CODE>
+// Commands: step (wallet oracle), check, normalize and prepare.
+// Grammar: Conformance.Wire; primitive interpretation: Conformance.Oracle;
+// Main supplies transport only. See docs/conformance-recovery.md#runtime-transition-monitor.
+// Wallet step: step VARIANT SELF TIME <state> <request> B <bits|->
 // where VARIANT = source | corrected and
 //   <gated>   = W color amount recipient | A entry | R entry | K key
 //             | P qx qy session phi1 phi2 phi3 phi4 phiLen wrap | C
@@ -21,11 +22,12 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 import { decodeState, encodeState, hex, showPoint, unhex, type Impl, type LedgerView, type Point } from './impl.ts';
+import { decodeObservation, decodePreparation, encodeCall, encodeObservation, type Observation, type Preparation, type RawCall, type Variant } from './wire.ts';
 
 export const MODEL_BIN =
   process.env.MODEL_BIN ?? fileURLToPath(new URL('../../_build/conformance/Main', import.meta.url));
 
-export type Variant = 'source' | 'corrected';
+export type { Variant } from './wire.ts';
 
 /** Oracle 1's answer: settlement (`ok`, `refused`, `fail CODE`), signature tokens, post-state. */
 export type StepAnswer =
@@ -42,10 +44,12 @@ export class Model {
   constructor(private readonly impl: Impl, bin = MODEL_BIN) {
     this.child = spawn(bin, [], { stdio: ['pipe', 'pipe', 'pipe'] });
     this.child.stderr.on('data', (chunk: Buffer) => { this.stderr += chunk.toString(); });
+    this.child.on('error', (error: Error) => { this.stderr += error.message; });
+    this.child.stdin.on('error', (error: Error) => { this.stderr += error.message; });
     this.lines = createInterface({ input: this.child.stdout })[Symbol.asyncIterator]();
   }
 
-  async request(line: string): Promise<string> {
+  private async transport(line: string): Promise<string> {
     this.child.stdin.write(`${line}\n`);
     for (;;) {
       const { value, done } = await this.lines.next();
@@ -53,8 +57,20 @@ export class Model {
       if (value.startsWith('= ')) return value.slice(2);
       if (!value.startsWith('? ')) throw new Error(`unexpected model output: ${value}`);
       this.rpcCount++;
-      this.child.stdin.write(`${this.primitive(value.slice(2).split(' '))}\n`);
+      try {
+        const request = value.slice(2).split(' ');
+        this.child.stdin.write(`${answerPrimitive(this.impl, request)}\n`);
+      } catch (cause: unknown) {
+        this.child.kill();
+        throw new Error('monitor primitive backend failed', { cause });
+      }
     }
+  }
+
+  async request(line: string): Promise<string> {
+    const answer = await this.transport(line);
+    if (answer === 'error' || answer.startsWith('error ')) throw new Error(`monitor ${answer}`);
+    return answer;
   }
 
   async step(variant: Variant, self: string, time: number, pre: LedgerView, request: string, bits: string): Promise<StepAnswer> {
@@ -70,33 +86,60 @@ export class Model {
     return { kind: 'answer', settled, sig, post, restBits: Number(answer[after + 1]) };
   }
 
-  async decide(variant: Variant, self: string, time: number, pre: string, call: string, post: string, verdict: string): Promise<boolean> {
-    return (await this.request(`decide ${variant} ${self} ${time} ${pre} ${call} ${post} ${verdict}`)) === 'true';
+  async check(observation: Observation): Promise<boolean> {
+    const answer = await this.request(`check ${encodeObservation(observation)}`);
+    if (answer !== 'true' && answer !== 'false') throw new Error(`invalid monitor check response: ${answer}`);
+    return answer === 'true';
+  }
+
+  async normalize(observation: Observation): Promise<Observation> {
+    return decodeObservation(await this.request(`normalize ${encodeObservation(observation)}`));
+  }
+
+  async prepare(variant: Variant, self: string, account: bigint, state: LedgerView, call: RawCall): Promise<Preparation> {
+    return decodePreparation(await this.request(`prepare ${variant} ${self} ${account} ${encodeState(state)} ${encodeCall(call)}`));
   }
 
   close(): void {
     this.child.stdin.end();
   }
 
-  private primitive([op, ...a]: string[]): string {
-    const { rt, pureCircuits: pc } = this.impl;
-    const n = (i: number) => BigInt(a[i]);
+}
+
+const PRIMITIVE_ARITY: Record<string, number> = {
+  entry: 5, 'chal-w': 10, 'chal-add': 8, 'chal-rm': 8, 'chal-rot': 8,
+  'chal-pub': 16, 'chal-cancel': 7, 'chal-submit': 15, mulg: 1, mul: 3, add: 4,
+};
+
+/** Real Compact primitive backend shared by the subprocess and foreign API tests. */
+export function answerPrimitive(impl: Impl, [op, ...a]: string[]): string {
+    const { rt, pureCircuits: pc } = impl;
+    if (!Object.hasOwn(PRIMITIVE_ARITY, op) || a.length !== PRIMITIVE_ARITY[op]) throw new Error(`invalid primitive request ${op}`);
+    const n = (i: number) => {
+      if (!/^[0-9]+$/.test(a[i] ?? '')) throw new Error('invalid primitive natural');
+      return BigInt(a[i]);
+    };
     const pt = (i: number): Point => ({ x: n(i), y: n(i + 1) });
-    const self = () => ({ bytes: unhex(a[0]) });
+    const bytes = (i: number, size = 32): Uint8Array => {
+      if (!new RegExp(`^[0-9a-f]{${size * 2}}$`).test(a[i] ?? '')) throw new Error(`invalid primitive Bytes${size}`);
+      return unhex(a[i]);
+    };
+    const self = () => ({ bytes: bytes(0) });
+    const reply = (() => {
     switch (op) {
       case 'entry':
         return hex(pc.derive_device_entry_with_jubjub(self(), pt(1), n(3), n(4)));
       case 'chal-w':
-        return hex(pc.challenge_withdraw_unshielded_with_jubjub(self(), pt(1), pt(3), unhex(a[5]), n(6), { bytes: unhex(a[7]) }, n(8), n(9)));
+        return hex(pc.challenge_withdraw_unshielded_with_jubjub(self(), pt(1), pt(3), bytes(5), n(6), { bytes: bytes(7) }, n(8), n(9)));
       case 'chal-add':
-        return hex(pc.challenge_add_device_with_jubjub(self(), pt(1), pt(3), unhex(a[5]), n(6), n(7)));
+        return hex(pc.challenge_add_device_with_jubjub(self(), pt(1), pt(3), bytes(5), n(6), n(7)));
       case 'chal-rm':
-        return hex(pc.challenge_remove_device_with_jubjub(self(), pt(1), pt(3), unhex(a[5]), n(6), n(7)));
+        return hex(pc.challenge_remove_device_with_jubjub(self(), pt(1), pt(3), bytes(5), n(6), n(7)));
       case 'chal-rot':
-        return hex(pc.challenge_rotate_enc_key_with_jubjub(self(), pt(1), pt(3), unhex(a[5]), n(6), n(7)));
+        return hex(pc.challenge_rotate_enc_key_with_jubjub(self(), pt(1), pt(3), bytes(5), n(6), n(7)));
       case 'chal-pub':
-        return hex(pc.challenge_publish_recovery_session_with_jubjub(self(), pt(1), pt(3), pt(5), unhex(a[7]),
-          n(8), n(9), n(10), n(11), n(12), unhex(a[13]), n(14), n(15)));
+        return hex(pc.challenge_publish_recovery_session_with_jubjub(self(), pt(1), pt(3), pt(5), bytes(7),
+          n(8), n(9), n(10), n(11), n(12), bytes(13, 64), n(14), n(15)));
       case 'chal-cancel':
         return hex(pc.challenge_recover_cancel_with_jubjub(self(), pt(1), pt(3), n(5), n(6)));
       case 'chal-submit':
@@ -111,5 +154,10 @@ export class Model {
       default:
         throw new Error(`unknown primitive ${op}`);
     }
-  }
+    })();
+    const isPoint = op === 'mulg' || op === 'mul' || op === 'add';
+    if (!(isPoint ? /^[0-9]+ [0-9]+$/.test(reply) : /^[0-9a-f]{64}$/.test(reply))) {
+      throw new Error(`malformed primitive response for ${op}`);
+    }
+    return reply;
 }

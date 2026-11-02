@@ -5,7 +5,7 @@
 //   Oracle 1 (execute & compare): the model runs its own wallet → client → bridge →
 //     admission system on the same coin bits the implementation's signers consumed;
 //     settlement, signature, post-state and coin consumption must match.
-//   Oracle 2 (decide): the model judges the implementation's observed
+//   Oracle 2 (check): the model judges the implementation's observed
 //     (pre-state, call incl. signatures, post-state, verdict) at the same block time.
 //     Its certificate still uses the model journal. Successful calls separately
 //     require implementation VM replay agreement and altered-read rejection.
@@ -17,11 +17,12 @@
 // not verified refinements of the concrete contract.
 
 import {
-  canonical, encodeState, hex, observed, REPAIRED, settled, showPoint, stateDiff,
+  canonical, hex, REPAIRED, settled, showPoint, stateDiff,
   type Account, type CallContext, type ChallengeBuilder, type Device, type Impl, type LedgerView, type Point,
 } from './impl.ts';
 import type { Model, Variant } from './model.ts';
 import { Prng, toBits } from './prng.ts';
+import { decodeCall, decodeOutcome } from './wire.ts';
 
 export interface Planned {
   label: string;
@@ -253,9 +254,11 @@ export class Runner {
     this.modelState = reasons.length === 0 ? next : post;
 
     const transcriptVerified = !verdict.ok || (verdict.transcript?.verified === true && verdict.transcript.tamperRejected);
-    const decided = transcriptVerified && await this.model.decide(
-      this.variant, acct.addressHex, time, encodeState(pre), p.call, encodeState(post), observed(verdict),
-    );
+    const decided = transcriptVerified && await this.model.check({
+      variant: this.variant, self: acct.addressHex, initial: pre, final: post,
+      transition: { kind: 'invocation', context: { account: 0n, time: BigInt(time) },
+        call: decodeCall(p.call), outcome: decodeOutcome(impl) },
+    });
     return {
       impl, model, reasons, decided, diverged: reasons.length > 0 || !decided, transcriptVerified,
       coins: p.bits.length, rpc: this.model.rpcCount - rpcBefore,

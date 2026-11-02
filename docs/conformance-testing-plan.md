@@ -28,16 +28,19 @@ proofs).
   to the compiled model and to the implementation; compare outputs and post-states step by
   step. Strongest: detects any deviation on the exercised inputs. Requires the model to be a
   function of its inputs, including randomness.
-- **Oracle 2 — decide an observed transition.** The model exposes a decision procedure
-  `decide : State → Call → State′ → Verdict → Bool`. The implementation runs on its own;
-  each observed transition is judged after the fact. Weaker (possibilistic: it accepts any
-  outcome the model allows) but needs no control over the implementation's randomness and
-  applies to relational specifications.
+- **Oracle 2 — decide an observed transition.** The model exposes
+  `acceptable : State → Transition → State → Bool`. `Transition` includes the
+  raw invocation or frozen candidate, account/time context and observed outcome.
+  The implementation runs independently; monitoring needs no control over its
+  randomness. It checks whether the supplied triple conforms, including accurately
+  observed rejection or abort, rather than merely whether a transaction succeeded.
 
-Both transition oracles are implemented. Oracle 2's Agda certificate currently
-uses a model-produced journal; successful simulator calls additionally verify
-the implementation-produced public VM transcript. That extra check is not a
-translation into model events (see WP1).
+Both transition oracles are implemented. The
+[runtime monitor](conformance-recovery.md#runtime-transition-monitor) also has
+versioned bidirectional serialization, a Haskell API and a C ABI. Its certificates
+still use model journals; successful simulator calls independently verify
+implementation-produced VM transcripts. That is not a translation into model
+events (see WP1), nor does VM replay authenticate declared coin effects.
 
 ### 2.2 Randomness is an input
 
@@ -62,23 +65,22 @@ specification is weakened.
 
 ### 2.4 Ideal functionalities need little replacement
 
-The model's "ZK" resource verifies a witness-carrying certificate whose relation is
-`eval body view ≡ inj₂ (finished …)`. That relation is decidable once journals have decidable
-equality, so the model-side verifier is re-execution with the witness: no proof system, no
-FFI. The implementation side needs no proving either, because the compact-runtime simulator
-executes circuits without ZK. Real cryptography enters only through hashes and curve
-arithmetic (challenge construction, device entries, signature verification), which are
-ordinary pure functions.
+Core `Transaction` values carry a proof of successful `eval`. The monitor accepts
+raw candidates instead: `decExecution` checks their claimed journal against the
+build state and constructs a certified transaction only on success. Invalid
+candidates are rejected before `Contract.admit`. This is re-execution, not a ZK
+proof system. The Compact simulator also executes without ZK. Real cryptography
+enters through hashes and curve arithmetic interpreted by the primitive backend.
 
 ## 3. Where we are
 
 | Item | State | Evidence |
 |---|---|---|
-| `Program` DSL executable | yes: `execute`/`eval`/`replay` are total functions | `src/Midnight/ContractDSL/Program.agda` |
+| `Program` DSL executable | yes: `eval`/`replay` are total functions | `src/Midnight/ContractDSL/Program.agda` |
 | `Protocol` executable | yes: inductive `Calls`, structural `_∘ᵖ_`; exact rational `evalC` | pinned categorical-crypto `protocol-rewrite` |
 | Compilation | MAlonzo works (`SmokeMain`, `Conformance.Main`); JS backend blocked | §4.2 |
 | Coin injection executor | `Conformance.Coins` (`readCoins`, `stepCoins`, `runCoins`) | spike |
-| Decidable `Rel` / journal | `Conformance.Account.decRel`, `_≟ᴶ_` | spike |
+| Decidable execution / journal | `Conformance.CertificateDecision.decExecution`, `decRun`, `_≟ᴶ_` | runtime monitor |
 | Implementation seam | compact-runtime simulator, no node/proof/zswap; block time set per call | `grants-offline.ts:221-258`, `sim.ts` at `5d12798` |
 | Pinned implementation | Historical `7d21a277` (recovery `5d12798` plus signer injection); repaired stamped-map working tree at the same base plus fixed source/wallet digests | `conformance/harness/recovery-pins.json`, enrolled gate lock |
 | Injectable implementation randomness | `JubjubDevice.sign(…, draw)` and `signRecoverSubmit(…, draw)`; deterministic settings retained in the gate baseline | historical `7d21a277`; gate pins |
@@ -90,15 +92,15 @@ ordinary pure functions.
 
 ### 4.1 Model side
 
-**Layers.** `Semantics` (ledger operations with `prepare` and `resultEq : Dec`) → `Program`
-(effects `ledger`/`require`/`publish`/`atChain`) → `Contract` (named entry points) →
-`Interpreter` (client, bridge, admission by journal replay) → categorical `Protocol`
-assembly (`wallet ∘ᵖ system ctx s`). Conformance modules add nothing to these layers; they
-instantiate them.
+**Layers.** `Semantics` (ledger operations with `prepare` and `DecEq-Res`) → `Program`
+(effects `ledger`/`require`/`publish`/`atChain`) → `Contract` (entrypoints,
+evaluation-certified transactions and atomic journal replay) → categorical
+`Protocol`. `Conformance.Account` supplies the wallet invocation adapter;
+`Conformance.Monitor` validates raw candidates before core admission.
 
 **Ledger state.** Concrete records with lists standing in for `Map`/`Set`, compared up to
 order (`_≈ᵇ_`), `Uint<n>` bounds enforced in `prepare` (`overflow` failure). Decidable
-equality on every `Op`, `El`, and on `Journal` (needed by `decRel`).
+equality on every `Op`, `Res`, and on `Journal` (needed by `decExecution`).
 
 **Circuits as programs.** One `Program` per exported circuit, asserting in the
 implementation's order so that the *first* failing assert (and hence the abort message) and
@@ -113,15 +115,17 @@ treats `dead` as a reportable `stuck`, never as agreement.
 
 **Primitives record.** Everything cryptographic: `Bytes32`, `Point`, scalar modulus,
 entry/challenge hashes mirroring the `pure circuit`s, `ecMulG`/`ecMul`/`ecAdd`, little-endian
-hash reading, decidable equalities. `--safe` modules are parameterised by it; `Main` binds it.
+hash reading, decidable equalities. `--safe` modules are parameterised by it;
+`Conformance.Oracle` interprets it with an explicit trusted backend.
 
 **Oracles.**
 - `stepModel : ℕ → State → Request → List Bool → Maybe ((State × StepReport) × List Bool)`:
   one wallet activation on an injected bit stream, returning the unread remainder (which
   must be empty for agreement).
-- `decide : ℕ → State → (n : Name) → Input n → State → Observed → Bool` (the `ℕ` is the block time): `eval`, certificate
-  check via `decRel`, `admission`, then post-state/verdict comparison; aborts must carry the
-  matching code and leave the state untouched.
+- `Conformance.Monitor.acceptable : State → Transition → State → Bool`:
+  same-view invocation or validation/admission of supplied frozen evidence,
+  followed by post-state/outcome comparison. Build and admission states remain
+  distinct; aborts must carry the matching code and leave state untouched.
 
 ### 4.2 Backend and FFI
 
@@ -129,14 +133,18 @@ hash reading, decidable equalities. `--safe` modules are parameterised by it; `M
   `UC.Model.Setup`; `-M8G` where agda-categories is pulled in.
 - **JS backend is blocked**: the generated code for stdlib `Relation.Nullary.Decidable.Core.map′`
   loops (copattern `proof (map′ …)` passes `does (map′ …)` to `Reflects.of`, which matches on
-  it; strict evaluation recurses). Every ℕ `_≟_`/`_≤?_` and hence `finishAdmission` is
+  it; strict evaluation recurses). Every ℕ `_≟_`/`_≤?_` and hence `Contract.admit` is
   affected. Report upstream; do not work around in the spec.
-- **Primitive calls** therefore cross a process boundary: the model prints `? op args`
-  lines, the harness answers (currently from the implementation's own `pureCircuits` and
-  compact-runtime). Binding pattern: an ordinary Agda definition overridden by
-  `{-# COMPILE GHC … #-}` with `{-# NOINLINE #-}` and a non-trivial body (`q ++ ""`), because
-  MAlonzo erases unused arguments and inlines identities. No postulates.
-- Wire format: whitespace-separated tokens (no JSON library in the GHC package set).
+- **CLI primitive calls** cross a process boundary: the model prints `? op args`,
+  and the harness answers using the implementation's `pureCircuits` and runtime.
+  `Main` supplies this transport through its GHC override; the safe checker and
+  codecs take an explicit backend and do not import `Main`.
+- **In-process integration** uses the stable `Passport.Monitor` Haskell facade
+  or `passport_monitor.h` C ABI. Both delegate to compiled Agda and take an
+  explicit deterministic crypto backend; failures remain distinct from `false`.
+- **Wire format:** bidirectional `monitor-v1` tokens with strict structural
+  parsing. Full-state implementation fixtures wrap observations in JSON; see
+  [the API, build and fixture instructions](conformance-recovery.md#runtime-transition-monitor).
 
 ### 4.3 Implementation side
 
@@ -158,8 +166,8 @@ hash reading, decidable equalities. `--safe` modules are parameterised by it; `M
 - Seeded PRNG generates the contract address, keys, the bit stream, and the call sequence
   (scenario classes with weights); a seed reproduces a run exactly.
 - Per step: run implementation, run model with the same bits, compare verdict/abort code,
-  signature `(R, s, grind)`, post-state up to order, and unread bits; then run `decide` on the
-  observed transition. Exit non-zero on any disagreement.
+  signature `(R, s, grind)`, post-state up to order, and unread bits; then monitor the
+  observed invocation triple. Exit non-zero on any disagreement.
 - **Mutation check** is part of the definition of done for every slice: a deliberate model
   mutation (e.g. `≤`→`<` in a guard) must be reported by both oracles; otherwise the oracle
   is not observing the behaviour it claims to.
@@ -177,7 +185,7 @@ hash reading, decidable equalities. `--safe` modules are parameterised by it; `M
 
 | Model resource | Replacement | Status |
 |---|---|---|
-| `Interpreter.zk` / `verified` (witness certificate) | re-execution + `decRel`; no proof system | done (spike) |
+| Evaluation-certified `Contract.Transaction` | re-execution + `decExecution` at the external candidate-validation boundary; no proof system | implemented in `Conformance.CertificateDecision` |
 | ideal proof token (`coin`) | opaque proof bytes or omitted under the simulator | trivial |
 | `SymbolicDigest.Digest` | `Bytes32` + `persistentHash` encoding via `Primitives` | done for the spike's own ledger; main spec's `MidnightLedger` still hardcodes the symbolic type (WP5) |
 | symbolic authority key (`lockKey`) | JubJub Schnorr verify (`ecMulG s ≟ ecAdd R (ecMul pk c)`); k256 ECDSA | jubjub done; k256 open |
@@ -191,8 +199,8 @@ Ordered; each ends with the mutation check and a seeded multi-seed run.
 **WP1 — Model-journal correspondence.** Successful simulator calls now have
 implementation-produced transcript replay and recorded-read mutation checks.
 The remaining task is to decode those VM transcripts into model `Journal`s and
-feed them to `decRel`/`admission`, establishing the translation's semantic
-boundary rather than calling runtime replay an independent model certificate.
+validate their execution with `decExecution` before `Chain.admit`, establishing
+the translation boundary rather than equating runtime replay with a model certificate.
 
 **WP2 — Independent primitives.** Bind `Primitives` to an implementation that is not the
 system under test (`signer-rs` challenge path over JSON, or a native jubjub/SHA-256 library),
