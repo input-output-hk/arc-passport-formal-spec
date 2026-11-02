@@ -33,6 +33,8 @@ import Passport.AccountRecovery P self as Account
 open Account using (module Chain)
 open Chain using (Admissions; done; next)
 open import Midnight.ContractDSL.Program accountLedger Assertion
+open import Midnight.ContractDSL.Hoare accountLedger Assertion
+import Midnight.ContractDSL.AdmissionProperties accountLedger Assertion Account.contract as Admission
 
 open Primitives P
 
@@ -146,23 +148,42 @@ prepare-safe (writeWrap _) _ pre refl = safe (devicesSafe pre) (pendingSafe pre)
 -- Program preservation
 ------------------------------------------------------------------------
 
-record Keeps {A : Set} (p : Program A) : Set where
-  field run : ∀ {s a t j} → Safe s → eval p s ≡ inj₂ (finished a t j) → Safe t
+-- Retain the program index for inference: onSuccess is not injective.
+record Keeps (p : Program A) : Set where
+  constructor keeps
+  field preservation : Hoare Safe p (onSuccess (λ r → Safe (working r)))
 open Keeps
 
+keeps-from-success : (p : Program A) →
+  (∀ {s a t j} → Safe s → eval p s ≡ inj₂ (finished a t j) → Safe t) → Keeps p
+preservation (keeps-from-success p preserved) s pre with eval p s in evaluated
+... | inj₁ _ = tt
+... | inj₂ (finished a t j) = preserved pre evaluated
+
+keeps-result : ∀ {p : Program A} → Keeps p →
+  ∀ {s a t j} → Safe s → eval p s ≡ inj₂ (finished a t j) → Safe t
+keeps-result {p = p} preserves {s} pre evaluated =
+  subst (onSuccess (λ r → Safe (working r))) evaluated (preservation preserves s pre)
+
 ledger-keeps : ∀ {k} (o : Op k) → WriteSafe o → Keeps (perform (ledger o))
-run (ledger-keeps o fresh) {s} pre eq =
-  hoare-ledger o (λ s x t pre prepared → prepare-safe o fresh pre prepared) s _ _ _ pre eq
+ledger-keeps o fresh = keeps (hoare-ledger {Q = onSuccess (λ r → Safe (working r))}
+  o (λ _ _ _ _ → tt) (λ s x t pre prepared → prepare-safe o fresh pre prepared))
 
 assert-keeps : ∀ b error → Keeps (assert b error)
-run (assert-keeps b error) {s} pre eq =
-  hoare-assert b error (λ s pre _ → pre) s _ _ _ pre eq
+assert-keeps b error = keeps (hoare-assert {Q = onSuccess (λ r → Safe (working r))}
+  b error (λ _ _ _ → tt) (λ s pre _ → pre))
 
 bind-keeps : (p : Program A) (f : A → Program B) → Keeps p →
   (∀ a → Keeps (f a)) → Keeps (p >>= f)
-run (bind-keeps p f hp hf) {s} pre eq =
-  hoare-bind p f (λ s a t j pre ev → run hp pre ev)
-    (λ a js u b t es pre ev → run (hf a) pre ev) s _ _ _ pre eq
+bind-keeps p f hp hf = keeps (hoare-bind
+  {R = onSuccess (λ r → Safe (working r))} {Q = onSuccess (λ r → Safe (working r))}
+  p f (preservation hp) (λ _ _ → tt) rest)
+  where
+  rest : ∀ a js → Hoare (λ u → Safe u) (f a)
+    (λ outcome → onSuccess (λ r → Safe (working r)) (prefixJournal js outcome))
+  rest a js u pre with eval (f a) u | preservation (hf a) u pre
+  ... | inj₁ _ | _ = tt
+  ... | inj₂ _ | preserved = preserved
 
 then-keeps : (p : Program A) (q : Program B) → Keeps p → Keeps q → Keeps (p >> q)
 then-keeps p q hp hq = bind-keeps p (λ _ → q) hp (λ _ → hq)
@@ -171,11 +192,17 @@ live-keeps : ∀ pk → Keeps (requireLive pk)
 live-keeps pk = then-keeps _ _ (assert-keeps _ _) (assert-keeps _ _)
 
 authorise-keeps : ∀ a challenge → Keeps (authorise a challenge)
-run (authorise-keeps a challenge) {s} pre eq with Execution.authorisation-details a challenge eq
-... | known , refl , journal = safe
-  (insert-safe (point-safe (pk a) (deviceEpoch s) (suc (useCounter a))
-    (member-honest (pk a) (deviceEpoch s) (useCounter a) pre known))
-    (remove-safe (devicesSafe pre))) (pendingSafe pre)
+authorise-keeps a challenge = keeps-from-success _ λ {s} pre eq →
+  case-authorisation s pre eq (Execution.authorisation-details a challenge eq)
+  where
+  case-authorisation : ∀ s → Safe s → ∀ {result t j} →
+    eval (authorise a challenge) s ≡ inj₂ (finished result t j) →
+    deviceEntry self (pk a) (deviceEpoch s) (useCounter a) ∈ᵇ devices s ≡ true ×
+    t ≡ authorisationState s a × j ≡ authorisationJournal s a → Safe t
+  case-authorisation s pre eq (known , refl , journal) = safe
+    (insert-safe (point-safe (pk a) (deviceEpoch s) (suc (useCounter a))
+      (member-honest (pk a) (deviceEpoch s) (useCounter a) pre known))
+      (remove-safe (devicesSafe pre))) (pendingSafe pre)
 
 bump-round-keeps : Keeps bumpRound
 bump-round-keeps = bind-keeps _ _ (ledger-keeps readRound tt) λ n →
@@ -233,13 +260,20 @@ publish-keeps (publishArgs pk nonce phi@(phi₁ , phi₂ , phi₃ , phi₄) len 
                 (ledger-keeps (writeWrap wrap) tt)))))))))))))))))
 
 cancel-keeps : Keeps doCancel
-run cancel-keeps pre eq with Execution.cancellation-shape eq
-... | refl = safe (devicesSafe pre) (λ ())
+cancel-keeps = keeps-from-success _ preserved
+  where
+  preserved : ∀ {s result t j} → Safe s → eval doCancel s ≡ inj₂ (finished result t j) → Safe t
+  preserved pre eq with Execution.cancellation-shape eq
+  ... | refl = safe (devicesSafe pre) (λ ())
 
 submit-keeps : ∀ a → ¬ Compromised (SubmitArgs.successorPk a) → Keeps (submitRecovery a)
-run (submit-keeps a honest) {s} pre eq with Execution.submission-shape {s = s} {a = a} eq
-... | refl , journal = safe (devicesSafe pre)
-  (λ _ → point-safe (SubmitArgs.successorPk a) (suc (deviceEpoch s)) 0 honest)
+submit-keeps a honest = keeps-from-success _ preserved
+  where
+  preserved : ∀ {s result t j} → Safe s →
+    eval (submitRecovery a) s ≡ inj₂ (finished result t j) → Safe t
+  preserved {s} pre eq with Execution.submission-shape {s = s} {a = a} eq
+  ... | refl , journal = safe (devicesSafe pre)
+    (λ _ → point-safe (SubmitArgs.successorPk a) (suc (deviceEpoch s)) 0 honest)
 
 finalise-reset : ∀ {s a t j} → EntrySafe (pendingEntry s) →
   eval (finaliseRecovery corrected) s ≡ inj₂ (finished a t j) → Safe t
@@ -251,7 +285,8 @@ finalise-has-pending : ∀ {s result t j} →
 finalise-has-pending eq = FinalisationReady.hasPending (proj₁ (Execution.finalisation-details eq))
 
 finalise-keeps : Keeps (finaliseRecovery corrected)
-run finalise-keeps {s} pre eq = finalise-reset {s = s} (pendingSafe pre (finalise-has-pending eq)) eq
+finalise-keeps = keeps-from-success _ λ {s} pre eq →
+  finalise-reset {s = s} (pendingSafe pre (finalise-has-pending eq)) eq
 
 ------------------------------------------------------------------------
 -- Contract admission and traces
@@ -278,20 +313,19 @@ circuit-keeps (Account.jubjub Account.recoverCancel) (_ , a) _ =
 
 circuit-safe : ∀ n a → InputPolicy n a → ∀ {s result t j} → Safe s →
   eval (Account.circuit corrected n a) s ≡ inj₂ (finished result t j) → Safe t
-circuit-safe n a policy = run (circuit-keeps n a policy)
+circuit-safe n a policy = keeps-result (circuit-keeps n a policy)
 
-admission-safe : ∀ ctx tx → TransactionPolicy tx → Safe s →
-  ∀ {t v} → Chain.admission ctx s tx ≡ (t , v) → Safe t
-admission-safe ctx tx policy pre {v = Chain.rejected} admitted =
-  subst Safe (sym (Chain.rejection-atomic ctx _ tx (Chain.verified tx) admitted)) pre
-admission-safe ctx tx policy pre {v = Chain.accepted} admitted
-  with Chain.accepted-refinement ctx _ tx admitted
-... | e , rel , evaluated = run (circuit-keeps _ _ (policy e rel)) pre evaluated
+admission-safe : ∀ q → TransactionPolicy (Chain.Submission.transaction q) → Safe s →
+  ∀ {t v} → Chain.admit s q ≡ (t , v) → Safe t
+admission-safe q policy pre {v = Chain.rejected} admitted =
+  subst Safe (sym (Admission.rejection-atomic q _ _ admitted)) pre
+admission-safe q policy pre {v = Chain.accepted} admitted =
+  circuit-safe _ _ policy pre (proj₂ (Admission.accepted-execution q _ _ admitted))
 
 trace-safe : ∀ {s t} (trace : Admissions s t) → TracePolicy trace → Safe s → SafeAdmissions trace
 trace-safe done policy-done pre = all-done pre
-trace-safe (next ctx tx v admitted rest) (policy-next policy policies) pre =
-  all-next pre (trace-safe rest policies (admission-safe ctx tx policy pre admitted))
+trace-safe (next q v admitted rest) (policy-next policy policies) pre =
+  all-next pre (trace-safe rest policies (admission-safe q policy pre admitted))
 
 safe-endpoint : ∀ {s t} {trace : Admissions s t} → SafeAdmissions trace → Safe t
 safe-endpoint (all-done pre) = pre
@@ -340,22 +374,21 @@ finalisation-program : (n : Account.Name) (a : Account.Input n) →
   n ≡ Account.recoverFinalise → Account.circuit corrected n a ≡ finaliseRecovery corrected
 finalisation-program Account.recoverFinalise _ refl = refl
 
-accepted-finalisation-reset : ∀ ctx tx {s recovered} →
-  Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverFinalise →
+accepted-finalisation-reset : ∀ now tx {s recovered} →
+  Chain.Transaction.entry tx ≡ Account.recoverFinalise →
   EntrySafe (pendingEntry s) →
-  Chain.admission ctx s tx ≡ (recovered , Chain.accepted) → Safe recovered
-accepted-finalisation-reset ctx tx {s} isFinalisation fresh admitted
-  with Chain.accepted-refinement ctx s tx admitted
-... | e , rel , evaluated = finalise-reset fresh
-  (trans (cong (λ p → eval p s)
-    (sym (finalisation-program (Chain.Statement.name (Chain.Tx.claim tx))
-      (Chain.Evidence.inputs e) isFinalisation))) evaluated)
+  Chain.admit s (Chain.submit now tx) ≡ (recovered , Chain.accepted) → Safe recovered
+accepted-finalisation-reset now tx {s} isFinalisation fresh admitted =
+  finalise-reset fresh (trans (cong (λ p → eval p s)
+    (sym (finalisation-program (Chain.Transaction.entry tx)
+      (Chain.Transaction.input tx) isFinalisation)))
+    (proj₂ (Admission.accepted-execution (Chain.submit now tx) s _ admitted)))
 
-accepted-recovery-trace-exclusion : ∀ ctx tx {s recovered t} →
-  Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverFinalise →
+accepted-recovery-trace-exclusion : ∀ now tx {s recovered t} →
+  Chain.Transaction.entry tx ≡ Account.recoverFinalise →
   EntrySafe (pendingEntry s) →
-  Chain.admission ctx s tx ≡ (recovered , Chain.accepted) →
+  Chain.admit s (Chain.submit now tx) ≡ (recovered , Chain.accepted) →
   (trace : Admissions recovered t) → TracePolicy trace →
   ∀ pk counter → Compromised pk → ¬ DeviceAuthority t pk counter
-accepted-recovery-trace-exclusion ctx tx isFinalisation fresh admitted trace policy =
-  trace-authority-excluded trace policy (accepted-finalisation-reset ctx tx isFinalisation fresh admitted)
+accepted-recovery-trace-exclusion now tx isFinalisation fresh admitted trace policy =
+  trace-authority-excluded trace policy (accepted-finalisation-reset now tx isFinalisation fresh admitted)

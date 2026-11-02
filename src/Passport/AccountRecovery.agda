@@ -2,23 +2,11 @@
 
 open import Conformance.Primitives
 
--- Recovery-relevant slice of the shared account, not a separately deployed
--- recovery contract. Read contract, then Chain.Admissions (the generic
--- Interpreter trace), then RecoveryExecution and RecoveryAuthority properties.
--- Ledger.State and Ledger.accountLedger expose shared custody/device/recovery
--- state; circuit bodies are in Conformance.Recovery and authorisation in Custody.
---
--- Initial-state boundary: the caller supplies an already bootstrapped State.
--- There is no global well-formedness/reachability premise in this model: every
--- represented State remains in scope, including unsafe old device sets and
--- pending recovery. Successful-operation guards are stated in RecoveryExecution;
--- authority preservation requires Safe initially (or a safe pending successor
--- at accepted finalisation) and RecoveryAuthorityDefinitions.TracePolicy. That
--- separate hypothesis covers all openings of all steps, including rejected ones:
--- enrolment entries exclude compromised-key encodings and recovery successors
--- are uncompromised. It is not enforced by this contract.
--- Bootstrap, deployment, primitive correspondence and cryptographic security
--- are not established here. See docs/conformance-recovery.md.
+-- Recovery-relevant shared account slice, with a caller-supplied post-bootstrap
+-- State. Read contract, Chain.Admissions, then RecoveryExecution/RecoveryAuthority.
+-- Circuit bodies: Conformance.Recovery; authorisation: Conformance.Custody.
+-- TracePolicy is a separate theorem hypothesis, not an admission restriction.
+-- Assumptions and limits: docs/conformance-recovery.md#checked-formal-scope.
 module Passport.AccountRecovery (P : Primitives)
   (self : Primitives.Bytes32 P) where
 
@@ -32,7 +20,7 @@ open Ledger
 open import Conformance.Custody P self
 open import Conformance.Recovery P self
 open import Midnight.ContractDSL.Program accountLedger Assertion
-open import Midnight.ContractDSL.Protocol accountLedger Assertion
+open import Midnight.ContractDSL.Contract accountLedger Assertion
 
 open Primitives P
 
@@ -97,15 +85,14 @@ circuit variant (jubjub g) (p , a) = gated g p a
 
 assemble : Finalisation → Contract
 assemble variant = record
-  { Name = Name ; Input = Input ; PublicArgs = Input ; Result = λ _ → ⊤
-  ; Witness = λ _ _ → ⊤ ; publicArgs = λ _ a → a
-  ; body = λ _ n a _ → circuit variant n a }
+  { self = 0 ; EntryPoint = Name ; Input = Input ; Result = λ _ → ⊤
+  ; body = λ _ n a → circuit variant n a }
 
 -- Intended proof subject: finalisation replaces the old device set with the
 -- recorded successor. assemble sourceShaped is a historical comparator only.
 contract : Contract
 contract = assemble corrected
 
--- Interpreter account identity 0 (Context.account) is distinct from byte-valued
--- self, which binds circuit challenges. Admission Context supplies chain time.
-module Chain = Interpreter contract (ExactCommunication.scheme contract) 0
+-- Logical account identity Contract.self = 0; the Bytes32 parameter self is the
+-- challenge domain. See Conformance.Monitor for the transport identity boundary.
+module Chain = Contract contract

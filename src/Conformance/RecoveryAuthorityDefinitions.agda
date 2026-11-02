@@ -45,25 +45,24 @@ InputPolicy (Account.jubjub Account.addDevice) (entry , _) = EntrySafe entry
 InputPolicy Account.recoverSubmit a = ¬ Compromised (SubmitArgs.successorPk a)
 InputPolicy _ _ = ⊤
 
--- All certificate openings related to the claim satisfy the input hypothesis.
-TransactionPolicy : Chain.Tx → Set
-TransactionPolicy tx = ∀ e → Chain.Rel (Chain.Tx.claim tx) e →
-  InputPolicy (Chain.Statement.name (Chain.Tx.claim tx)) (Chain.Evidence.inputs e)
+TransactionPolicy : Chain.Transaction → Set
+TransactionPolicy tx =
+  InputPolicy (Chain.Transaction.entry tx) (Chain.Transaction.input tx)
 
 -- The hypothesis covers every transaction of the unrestricted execution,
 -- including rejected steps; it is not a condition for contract admission.
 data TracePolicy : ∀ {s t} → Admissions s t → Set where
   policy-done : ∀ {s} → TracePolicy (done {s})
-  policy-next : ∀ {s u t ctx tx v admitted} {rest : Admissions u t} →
-    TransactionPolicy tx → TracePolicy rest →
-    TracePolicy (next {s} ctx tx v admitted rest)
+  policy-next : ∀ {s u t q v admitted} {rest : Admissions u t} →
+    TransactionPolicy (Chain.Submission.transaction q) → TracePolicy rest →
+    TracePolicy (next {s} q v admitted rest)
 
 -- The endpoint and every intermediate ledger, not only a one-step invariant.
 data SafeAdmissions : ∀ {s t} → Admissions s t → Set where
   all-done : ∀ {s} → Safe s → SafeAdmissions (done {s})
-  all-next : ∀ {s u t ctx tx v admitted} {rest : Admissions u t} →
+  all-next : ∀ {s u t q v admitted} {rest : Admissions u t} →
     Safe s → SafeAdmissions rest →
-    SafeAdmissions (next {s} ctx tx v admitted rest)
+    SafeAdmissions (next {s} q v admitted rest)
 
 DeviceAuthority : State → Point → ℕ → Set
 DeviceAuthority s pk counter =

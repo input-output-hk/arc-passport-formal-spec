@@ -2,26 +2,12 @@
 
 open import Conformance.Primitives
 
--- Definitions: RecoveryExecutionDefinitions contains SubmissionReady,
--- FinalisationReady, RotationReady, and the exact state/journal functions.
--- Proofs: RecoveryExecutionProof; this file presents their explicit types.
--- Reading route: Passport.AccountRecovery.contract, then its unrestricted
--- Chain.Admissions; the circuit bodies and authorisation seam are in
--- Recovery and Custody. Program.eval constructs a working state/journal without
--- enforcing chain deadlines; Protocol.Interpreter.admission verifies
--- the certificate and atomically replays its journal against the current state,
--- checking chain conditions. The makeTx argument slots are explained below.
--- Chain's account identity is 0, so admission uses `context 0 now`.
--- The separate `0` argument to makeTx is the commitment opening.
--- Readiness records expose model guards. RotationReady additionally retains
--- the concrete counterFits premise; the omitted submission post_epoch cast
--- instead remains a prose caveat (conformance-recovery.md#ledger-primitive-boundary).
--- Positive execution requires readiness; admission also requires chain deadlines.
--- Signature equations are checked, but unforgeability, challenge collision
--- resistance, signer ownership and primitive correspondence remain external.
--- Exact journal/state provenance below is for actual account DSL evaluation and
--- Interpreter replay. Concrete circuit correspondence is executable evidence,
--- not a verified compiler/deployment refinement. No grant claim is made.
+-- Guard-premised evaluation, admission, provenance and rejection properties.
+-- Definitions: RecoveryExecutionDefinitions; proofs: RecoveryExecutionProof.
+-- Program.eval constructs a working state/journal; Contract.admit replays the
+-- certified journal at the current state and submission time, enforcing deadlines.
+-- Assumptions and limits: docs/conformance-recovery.md#checked-formal-scope
+-- and #ledger-primitive-boundary (including concrete-width guards).
 module Conformance.RecoveryExecution (P : Primitives)
   (self : Primitives.Bytes32 P) where
 
@@ -71,23 +57,19 @@ finalisation-provenance : ∀ {s result t j} →
   t ≡ finalisationState s × j ≡ finalisationJournal s
 finalisation-provenance = Proof.finalisation-shape
 
--- makeTx name input tt 0 s tt post journal evidence uses the unit circuit
--- witness, opening 0, build-view/prestate s, and unit result tt. Its final
--- slots give the computed poststate, ordered journal, and evaluation evidence.
--- The separate admission call replays that certificate against current state s.
+-- Certified transactions retain their actual build view and successful execution.
+-- Admission independently replays against the current state.
 
 submission-commits : ∀ now s a (ready : SubmissionReady s a) →
-  holds (timeAtMost (nowUpper a)) (context 0 now) ≡ true →
-  Chain.admission (context 0 now) s
-    (Chain.makeTx Account.recoverSubmit a tt 0 s tt (submissionState s a)
-      (submissionJournal s a) (positive-submission s a ready)) ≡ (submissionState s a , Chain.accepted)
+  holds (timeAtMost (nowUpper a)) now ≡ true →
+  Chain.admit s (Chain.submit now
+    (submissionTransaction s a (positive-submission s a ready))) ≡ (submissionState s a , Chain.accepted)
 submission-commits = Proof.submission-admission
 
 finalisation-commits : ∀ now s (ready : FinalisationReady s) →
-  holds (timeAtLeast (pendingNotBefore s)) (context 0 now) ≡ true →
-  Chain.admission (context 0 now) s
-    (Chain.makeTx Account.recoverFinalise tt tt 0 s tt (finalisationState s)
-      (finalisationJournal s) (positive-finalisation s ready)) ≡ (finalisationState s , Chain.accepted)
+  holds (timeAtLeast (pendingNotBefore s)) now ≡ true →
+  Chain.admit s (Chain.submit now
+    (finalisationTransaction s (positive-finalisation s ready))) ≡ (finalisationState s , Chain.accepted)
 finalisation-commits = Proof.finalisation-admission
 
 submission-deadline : ∀ ctx s a t → replay ctx (submissionJournal s a) s ≡ just t →
@@ -98,20 +80,19 @@ finalisation-deadline : ∀ ctx s t → replay ctx (finalisationJournal s) s ≡
   holds (timeAtLeast (pendingNotBefore s)) ctx ≡ true
 finalisation-deadline = Proof.finalisation-deadline
 
--- The claim's publicInputs is the circuit input record; subst transports it
--- to SubmitArgs using isSubmission. Here s is the admission state; the
--- transaction's build view may differ. Neither claim assumes a given journal.
-accepted-submission-deadline : ∀ ctx tx {s t}
-  (isSubmission : Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverSubmit) →
-  Chain.admission ctx s tx ≡ (t , Chain.accepted) →
+-- Entry equality transports the certified transaction's dependent input.
+-- The current admission state can differ from the transaction's build view.
+accepted-submission-deadline : ∀ now tx {s t}
+  (isSubmission : Chain.Transaction.entry tx ≡ Account.recoverSubmit) →
+  Chain.admit s (Chain.submit now tx) ≡ (t , Chain.accepted) →
   holds (timeAtMost (nowUpper
-    (subst Account.Input isSubmission (Chain.Statement.publicInputs (Chain.Tx.claim tx))))) ctx ≡ true
+    (subst Account.Input isSubmission (Chain.Transaction.input tx)))) now ≡ true
 accepted-submission-deadline = Proof.accepted-submission-deadline
 
-accepted-finalisation-deadline : ∀ ctx tx {s t}
-  (isFinalisation : Chain.Statement.name (Chain.Tx.claim tx) ≡ Account.recoverFinalise) →
-  Chain.admission ctx s tx ≡ (t , Chain.accepted) →
-  holds (timeAtLeast (pendingNotBefore s)) ctx ≡ true
+accepted-finalisation-deadline : ∀ now tx {s t}
+  (isFinalisation : Chain.Transaction.entry tx ≡ Account.recoverFinalise) →
+  Chain.admit s (Chain.submit now tx) ≡ (t , Chain.accepted) →
+  holds (timeAtLeast (pendingNotBefore s)) now ≡ true
 accepted-finalisation-deadline = Proof.accepted-finalisation-deadline
 
 cancellation-clears : ∀ {s a result t j} →
@@ -140,7 +121,7 @@ stale-nonce-rejected : ∀ s a → pending s ≡ false →
   eval (submitRecovery a) s ≡ inj₁ (assertionError staleNonce)
 stale-nonce-rejected = Proof.stale-nonce-rejected
 
-rejection-is-atomic : ∀ ctx s tx {t} → Chain.admission ctx s tx ≡ (t , Chain.rejected) → t ≡ s
+rejection-is-atomic : ∀ now s tx {t} → Chain.admit s (Chain.submit now tx) ≡ (t , Chain.rejected) → t ≡ s
 rejection-is-atomic = Proof.rejection-is-atomic
 
 submission-replay-rejected : ∀ s a →
@@ -162,7 +143,6 @@ positive-rotation : ∀ s k a → RotationReady s k a →
 positive-rotation = Proof.rotation-positive
 
 rotation-commits : ∀ now s k a (ready : RotationReady s k a) →
-  Chain.admission (context 0 now) s
-    (Chain.makeTx (Account.jubjub Account.rotateEncKey) (k , a) tt 0 s tt (rotationState s k a)
-      (rotationJournal s k a) (positive-rotation s k a ready)) ≡ (rotationState s k a , Chain.accepted)
+  Chain.admit s (Chain.submit now
+    (rotationTransaction s k a (positive-rotation s k a ready))) ≡ (rotationState s k a , Chain.accepted)
 rotation-commits = Proof.rotation-admission

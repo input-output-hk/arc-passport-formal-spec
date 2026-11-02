@@ -3,54 +3,37 @@
 open import Conformance.Primitives
 import Conformance.AccountLedger as AccountLedger
 
--- Wallet/signing protocols and executable conformance oracles for the account
--- recovery specification in Passport.AccountRecovery. The variant selects the
--- intended contract or its historical source-shaped comparator; neither wallet
--- construction nor these decision procedures is a premise of contract traces.
--- See docs/conformance-spike.md and docs/conformance-recovery.md.
+-- Wallet/signing protocols for Passport.AccountRecovery. These clients are not
+-- premises of contract traces; raw transition checking lives in Monitor.
 module Conformance.Account (P : Primitives) (self : Primitives.Bytes32 P)
   (variant : AccountLedger.Finalisation P) where
 
 open import Data.Bool.Base
 open import Data.List.Base using (List; []; _∷_; foldl)
-import Data.List.Properties as List
 open import Data.Maybe.Base using (Maybe; nothing; just)
 import Data.Maybe.Base as Maybe
 open import Data.Nat.Base
-open import Data.Nat.Properties using (_≟_)
 open import Data.Product.Base
-import Data.Product.Properties as ΣP
-open import Data.String.Base using (String)
-open import Data.String.Properties using (_==_)
 open import Data.Sum.Base
-import Data.Sum.Properties as ⊎P
 open import Data.Unit.Base
 open import Data.Vec.Base using (Vec; toList)
 open import Function.Base using (case_of_; _∘_)
-open import Relation.Binary.Definitions using (DecidableEquality)
-open import Relation.Binary.PropositionalEquality
-open import Relation.Nullary
 
 open import CategoricalCrypto.Iface
 open import CategoricalCrypto.Protocol
 open import Conformance.AccountLedger P
 open import Conformance.Coins
 open import Conformance.Custody P self
-open import Conformance.Decidable
 open import Conformance.Recovery P self
-open import Passport.AccountRecovery P self
+open import Passport.AccountRecovery P self hiding (module Chain)
 
 open Primitives P
 
 open import Midnight.ContractDSL.Program accountLedger Assertion
-open import Midnight.ContractDSL.Protocol accountLedger Assertion
+import Midnight.ContractDSL.Contract accountLedger Assertion as DSL
 
-open ExactCommunication (assemble variant)
-open Interpreter (assemble variant) scheme 0
-
--- The chain view of one activation: the Interpreter's account and the block time.
-at : ℕ → Context
-at = context 0
+-- Wallet instance: selected finalisation variant, logical account identity 0.
+module Chain = DSL.Contract (assemble variant)
 
 ------------------------------------------------------------------------
 -- Clients: signers and wallet
@@ -117,15 +100,27 @@ record StepReport : Set where
   field signatures : Maybe Signature
         settlement : Settlement
 
-transact : Maybe Signature → (n : Name) → Input n → Calls ClientIf StepReport
-transact σ n a = call (build n a tt 0) λ
-  { (built _ _ _ _) → call submit λ
-      { (submitted accepted) → ret (stepReport σ committed)
-      ; _ → ret (stepReport σ refused) }
-  ; (buildFailed e _) → ret (stepReport σ (aborted e))
-  ; _ → ret (stepReport σ refused) }
+-- The wallet boundary builds against the supplied view, then submits only the
+-- certified transaction to the contract. Invalid candidate journals are Monitor's
+-- responsibility, not part of this client interface.
+InvocationIf : Iface
+InvocationIf = (Error ⊎ Chain.Verdict) ⇿ (Σ Name Input)
 
-walletStep : Request → Calls ClientIf StepReport
+execute : ℕ → State → Protocol unitᴵ InvocationIf
+execute now initial = record { St = State ; init = initial ; step = invoke }
+  where
+  invoke : State → Σ Name Input → Calls unitᴵ (State × (Error ⊎ Chain.Verdict))
+  invoke s (n , a) with Chain.build n a s
+  ... | inj₁ err = ret (s , inj₁ err)
+  ... | inj₂ tx = let t , v = Chain.admit s (Chain.submit now tx) in ret (t , inj₂ v)
+
+transact : Maybe Signature → (n : Name) → Input n → Calls InvocationIf StepReport
+transact σ n a = call (n , a) λ
+  { (inj₁ e) → ret (stepReport σ (aborted e))
+  ; (inj₂ Chain.accepted) → ret (stepReport σ committed)
+  ; (inj₂ Chain.rejected) → ret (stepReport σ refused) }
+
+walletStep : Request → Calls InvocationIf StepReport
 walletStep (signed g p pk uc sk nonce) = sign sk (λ R → challengeOf g p R pk nonce) λ R s gr →
   transact (just (signature ((R , s) ∷ []) gr)) (jubjub g) (p , authorisation pk uc R s gr)
 walletStep (recover skᵣ skₛ q′ rpk e n u) =
@@ -134,146 +129,14 @@ walletStep (recover skᵣ skₛ q′ rpk e n u) =
   where q = ecMulG skₛ
 walletStep (raw n a) = transact nothing n a
 
-wallet : Protocol ClientIf (StepReport ⇿ Request)
+wallet : Protocol InvocationIf (StepReport ⇿ Request)
 wallet = record { St = ⊤ ; init = tt ; step = λ _ q → walletStep q >>=ᶜ λ r → ret (tt , r) }
 
 assembled : ℕ → State → Protocol unitᴵ (StepReport ⇿ Request)
-assembled t s = wallet ∘ᵖ system (at t) s
+assembled t s = wallet ∘ᵖ execute t s
 
 -- Oracle 1: one wallet activation at block time `t` against the system holding `s`.
 stepModel : ℕ → State → Request → List Bool → Maybe ((State × StepReport) × List Bool)
-stepModel t s q bs = Maybe.map (λ (((_ , _ , u , _) , r) , rest) → (u , r) , rest)
+stepModel t s q bs = Maybe.map (λ (((_ , u) , r) , rest) → (u , r) , rest)
   (stepCoins (assembled t s) (init (assembled t s)) bs q)
 
-------------------------------------------------------------------------
--- Certificate decision (ExactCommunication relation)
-
-private
-  infixr 4 _⊗_
-  _⊗_ : {A B : Set} → DecidableEquality A → DecidableEquality B → DecidableEquality (A × B)
-  d₁ ⊗ d₂ = ΣP.≡-dec d₁ d₂
-
-_≟ᴳ_ : DecidableEquality Gated
-_≟ᴳ_ = via tag untag (λ
-  { withdrawUnshielded → refl ; addDevice → refl ; removeDevice → refl ; rotateEncKey → refl
-  ; publishRecoverySession → refl ; recoverCancel → refl }) _≟_
-  where
-  tag : Gated → ℕ
-  tag withdrawUnshielded = 0
-  tag addDevice = 1
-  tag removeDevice = 2
-  tag rotateEncKey = 3
-  tag publishRecoverySession = 4
-  tag recoverCancel = 5
-  untag : ℕ → Maybe Gated
-  untag 0 = just withdrawUnshielded
-  untag 1 = just addDevice
-  untag 2 = just removeDevice
-  untag 3 = just rotateEncKey
-  untag 4 = just publishRecoverySession
-  untag 5 = just recoverCancel
-  untag _ = nothing
-
-_≟ᴺ_ : DecidableEquality Name
-_≟ᴺ_ = via encode decode (λ
-  { depositUnshielded → refl ; recoverSubmit → refl ; recoverFinalise → refl
-  ; (jubjub _) → refl }) (⊎P.≡-dec _≟_ _≟ᴳ_)
-  where
-  encode : Name → ℕ ⊎ Gated
-  encode depositUnshielded = inj₁ 0
-  encode recoverSubmit = inj₁ 1
-  encode recoverFinalise = inj₁ 2
-  encode (jubjub g) = inj₂ g
-  decode : ℕ ⊎ Gated → Maybe Name
-  decode (inj₁ 0) = just depositUnshielded
-  decode (inj₁ 1) = just recoverSubmit
-  decode (inj₁ 2) = just recoverFinalise
-  decode (inj₁ _) = nothing
-  decode (inj₂ g) = just (jubjub g)
-
-decAuthorisation : DecidableEquality Authorisation
-decAuthorisation = via (λ (authorisation pk u R s g) → pk , u , R , s , g)
-  (λ (pk , u , R , s , g) → just (authorisation pk u R s g)) (λ _ → refl)
-  (_≟ᴾ_ ⊗ _≟_ ⊗ _≟ᴾ_ ⊗ _≟_ ⊗ _≟_)
-
-decPayload : (g : Gated) → DecidableEquality (Payload g)
-decPayload withdrawUnshielded = _≟ᴮ_ ⊗ _≟_ ⊗ _≟ᴮ_
-decPayload addDevice = _≟ᴮ_
-decPayload removeDevice = _≟ᴮ_
-decPayload rotateEncKey = _≟ᴮ_
-decPayload publishRecoverySession = via (λ (publishArgs pk n φ len w) → pk , n , φ , len , w)
-  (λ (pk , n , φ , len , w) → just (publishArgs pk n φ len w)) (λ _ → refl)
-  (_≟ᴾ_ ⊗ _≟ᴮ_ ⊗ (_≟_ ⊗ _≟_ ⊗ _≟_ ⊗ _≟_) ⊗ _≟_ ⊗ _≟ᵂ_)
-decPayload recoverCancel tt tt = yes refl
-
-decInput : (n : Name) → DecidableEquality (Input n)
-decInput depositUnshielded = _≟ᴮ_ ⊗ _≟_
-decInput recoverSubmit = via
-  (λ (submitArgs q q′ e n u Rᵣ sᵣ Rₛ sₛ g) → q , q′ , e , n , u , Rᵣ , sᵣ , Rₛ , sₛ , g)
-  (λ (q , q′ , e , n , u , Rᵣ , sᵣ , Rₛ , sₛ , g) → just (submitArgs q q′ e n u Rᵣ sᵣ Rₛ sₛ g)) (λ _ → refl)
-  (_≟ᴾ_ ⊗ _≟ᴾ_ ⊗ _≟_ ⊗ _≟_ ⊗ _≟_ ⊗ _≟ᴾ_ ⊗ _≟_ ⊗ _≟ᴾ_ ⊗ _≟_ ⊗ _≟_)
-decInput recoverFinalise tt tt = yes refl
-decInput (jubjub g) = decPayload g ⊗ decAuthorisation
-
-decTuple : DecidableEquality Tuple
-decTuple = via (λ (tuple acc n a r o) → acc , (n , a) , o) (λ (acc , (n , a) , o) → just (tuple acc n a tt o)) (λ _ → refl)
-  (_≟_ ⊗ ΣP.≡-dec _≟ᴺ_ (λ {n} → decInput n) ⊗ _≟_)
-
-decCondition : DecidableEquality Condition
-decCondition = via
-  (λ { (timeAtLeast t) → inj₁ t ; (timeAtMost t) → inj₂ t })
-  (λ { (inj₁ t) → just (timeAtLeast t) ; (inj₂ t) → just (timeAtMost t) })
-  (λ { (timeAtLeast _) → refl ; (timeAtMost _) → refl })
-  (⊎P.≡-dec _≟_ _≟_)
-
-decEvent : DecidableEquality Event
-decEvent = via
-  (λ { (operated o x) → inj₁ (_ , o , x) ; (published v) → inj₂ (inj₁ v) ; (required c) → inj₂ (inj₂ c) })
-  (λ { (inj₁ (_ , o , x)) → just (operated o x) ; (inj₂ (inj₁ v)) → just (published v) ; (inj₂ (inj₂ c)) → just (required c) })
-  (λ { (operated _ _) → refl ; (published _) → refl ; (required _) → refl })
-  (⊎P.≡-dec decOperated (⊎P.≡-dec _≟_ decCondition))
-
-_≟ᴶ_ : DecidableEquality Journal
-_≟ᴶ_ = List.≡-dec decEvent
-
-decRun : (p : Program ⊤) (s : State) (j : Journal) → Dec (Σ State λ t → eval p s ≡ inj₂ (finished tt t j))
-decRun p s j with eval p s
-... | inj₁ _ = no λ { (_ , ()) }
-... | inj₂ (finished _ t j′) = map′ (λ { refl → t , refl }) (λ { (_ , refl) → refl }) (j′ ≟ᴶ j)
-
-decRel : (x : Statement) (e : Evidence x) → Dec (Rel x e)
-decRel (statement acc n pa bind j) (evidence s a w r o) =
-  decInput n a pa ×-dec decTuple (tuple acc n a r o) bind ×-dec decRun (circuit variant n a) s j
-
-certified : Tx → Bool
-certified (transaction x invalid) = false
-certified (transaction x (certificate e _)) = does (decRel x e)
-
-------------------------------------------------------------------------
--- Oracle 2: judge an observed transition
-
-data Observed : Set where
-  succeeded : Observed
-  failed : String → Observed
-
--- An abort must leave the state untouched and carry the expected code; an admission
--- refusal (a chain-time requirement) is observed as the code "refused".
-failedAs : String → State → State → Observed → Bool
-failedAs _ s s′ succeeded = false
-failedAs code s s′ (failed c) = (c == code) ∧ (s′ ≈ᵇ s)
-
-succeededAs : State → State → Observed → Bool
-succeededAs t s′ succeeded = s′ ≈ᵇ t
-succeededAs t s′ (failed _) = false
-
--- `observed` is the implementation's verdict with its abort message mapped to `errorCode`.
-decide : ℕ → State → (n : Name) → Input n → State → Observed → Bool
-decide t s n a s′ observed = judge (eval (circuit variant n a) s) refl
-  where
-  settled : State × Verdict → Bool
-  settled (u , accepted) = succeededAs u s′ observed
-  settled (_ , rejected) = failedAs "refused" s s′ observed
-
-  judge : (o : Outcome ⊤) → eval (circuit variant n a) s ≡ o → Bool
-  judge (inj₁ e) _ = failedAs (errorCode e) s s′ observed
-  judge (inj₂ (finished r u j)) eq = let tx = makeTx n a tt 0 s r u j eq in certified tx ∧ settled (admission (at t) s tx)

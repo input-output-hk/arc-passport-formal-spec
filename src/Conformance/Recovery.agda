@@ -10,7 +10,6 @@ open import Conformance.Primitives
 -- front. Chain-time asserts are `atChain` requirements, so a time-guard failure is a
 -- refusal at admission rather than a build failure. The recovery-session payload
 -- (phi, wrap) is carried opaquely, with every guard on it kept.
--- `disclose` is Program's no-op source marker, not information-flow enforcement.
 module Conformance.Recovery (P : Primitives) (self : Primitives.Bytes32 P) where
 
 open import Data.Bool.Base
@@ -27,8 +26,7 @@ open Primitives P
 open import Midnight.ContractDSL.Program accountLedger Assertion
 
 doAddDevice : Bytes32 → Program ⊤
-doAddDevice newEntry = do
-  e ← disclose newEntry
+doAddDevice e = do
   present ← perform (ledger (deviceMember e))
   assert (not present) entryPresent
   perform (ledger (insertDevice e))
@@ -37,12 +35,11 @@ doAddDevice newEntry = do
 
 -- `pk`/`uc` are the authorising device's; its post-roll entry may not be removed.
 doRemoveDevice : Bytes32 → Point → ℕ → Program ⊤
-doRemoveDevice entry pk uc = do
-  e ← disclose entry
+doRemoveDevice e pk uc = do
   epoch ← perform (ledger readEpoch)
   n ← perform (ledger readDeviceCount)
   assert (1 <ᵇ n) lastDevice
-  callerEntry ← disclose (deviceEntry self pk epoch (suc uc))
+  let callerEntry = deviceEntry self pk epoch (suc uc)
   assert (not (does (e ≟ᴮ callerEntry))) authorisingDevice
   present ← perform (ledger (deviceMember e))
   assert present unknownDevice
@@ -50,9 +47,7 @@ doRemoveDevice entry pk uc = do
   perform (ledger (writeDeviceCount (pred n)))
 
 doRotateEncKey : Bytes32 → Program ⊤
-doRotateEncKey newKey = do
-  k ← disclose newKey
-  perform (ledger (setEncKey k))
+doRotateEncKey k = perform (ledger (setEncKey k))
 
 record PublishArgs : Set where
   constructor publishArgs
@@ -77,22 +72,14 @@ doPublish (publishArgs pk′ n (φ₁ , φ₂ , φ₃ , φ₄) len w) = do
   current ← perform (ledger readRecoveryPk)
   assert (not (does (pk′ ≟ᴾ current))) commitmentReused
   requireLive pk′
-  pk″ ← disclose pk′
-  n′ ← disclose n
-  φ₁′ ← disclose φ₁
-  φ₂′ ← disclose φ₂
-  φ₃′ ← disclose φ₃
-  φ₄′ ← disclose φ₄
-  len′ ← disclose len
-  w′ ← disclose w
-  perform (ledger (writeRecoveryPk pk″))
-  perform (ledger (writeSession n′))
-  perform (ledger (insertPhi1 φ₁′))
-  perform (ledger (insertPhi2 φ₂′))
-  perform (ledger (insertPhi3 φ₃′))
-  perform (ledger (insertPhi4 φ₄′))
-  perform (ledger (writePhiLen len′))
-  perform (ledger (writeWrap w′))
+  perform (ledger (writeRecoveryPk pk′))
+  perform (ledger (writeSession n))
+  perform (ledger (insertPhi1 φ₁))
+  perform (ledger (insertPhi2 φ₂))
+  perform (ledger (insertPhi3 φ₃))
+  perform (ledger (insertPhi4 φ₄))
+  perform (ledger (writePhiLen len))
+  perform (ledger (writeWrap w))
 
 -- The source's ecMul(pending_recovery_pk, 0) reads the key even though its
 -- group-theoretic result is the canonical identity. That equality belongs to
@@ -141,16 +128,13 @@ submitRecovery (submitArgs q q′ e₀ n₀ u Rr sr Rs ss g) = do
   asField c
   assert (verifies Rr sr rpk c) invalidRecoverySignature
   assert (verifies Rs ss q c) invalidSuccessorSignature
-  u₁ ← disclose u
-  perform (atChain (timeAtMost u₁))
+  perform (atChain (timeAtMost u))
   perform (ledger (writePending true))
-  entry ← disclose (deviceEntry self q (suc epoch) 0)
-  q″ ← disclose q′
-  u₂ ← disclose u
+  let entry = deviceEntry self q (suc epoch) 0
   perform (ledger (writePendingEntry entry))
-  perform (ledger (writePendingRecoveryPk q″))
+  perform (ledger (writePendingRecoveryPk q′))
   window ← perform (ledger readVetoWindow)
-  perform (ledger (writeNotBefore (u₂ + window)))
+  perform (ledger (writeNotBefore (u + window)))
   bumpRound
 
 -- Corrected set replacement is an intended specification, not a claim that
