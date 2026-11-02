@@ -23,12 +23,12 @@ in
     });
 
     categorical-crypto = prev.categorical-crypto.overrideAttrs (_: {
-      version = "protocol-rewrite-437dca12";
+      version = "protocol-rewrite-f280e04f";
       src = pkgs.fetchFromGitHub {
         owner = "input-output-hk";
         repo = "categorical-crypto";
-        rev = "437dca12c85f096715fc06d9155146b3afc5f46e";
-        hash = "sha256-iFPrkUnUaw+xw74CE559QcxCkzhmsWZ9JIWnqNCTIig=";
+        rev = "f280e04f34a6d893fcf48b0f9b2845bc045122ea";
+        hash = "sha256-lQY1j8vl4VTKpAS2rf0yp5JiY4KPvMMkfznK2xvl1dc=";
       };
     });
   };

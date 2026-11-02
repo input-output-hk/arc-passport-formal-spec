@@ -24,7 +24,16 @@ Passport project.
   points, evaluation-certified transactions, admission and traces.
 - [`AdmissionProperties`](src/Midnight/ContractDSL/AdmissionProperties.agda) proves
   various correctness properties.
+- [`Protocol`](src/Midnight/ContractDSL/Protocol.agda): transaction submission,
+  publication receipts, and protocol reachability and invariant preservation.
 - [`Storage`](src/Midnight/ContractDSL/Storage.agda) defines a
   vocabulary of storage codes.
 - [`Storage.Properties`](src/Midnight/ContractDSL/Storage/Properties.agda) proves
   the generated lens laws.
+
+### Protocol adapter
+
+`Protocol.toProtocol initial` wraps contract admission as a categorical-crypto
+protocol. Each `Submission` supplies a slot and an evaluation-certified transaction;
+the receipt contains the verdict and, on acceptance, the journal's published values.
+Rejection leaves the state unchanged and returns no publications.
