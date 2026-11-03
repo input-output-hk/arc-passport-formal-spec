@@ -19,6 +19,13 @@ import Conformance.FullAccountGrant
 -- Entrypoint dispatch, argument validation and full ledger schema.
 import Conformance.FullAccount
 import Conformance.FullAccountProperties
+-- Deployment-rooted labelled histories: generic relations and conditional
+-- induction rules, then the account instance with a runtime-only call boundary.
+-- Finite local histories with no environment/security policy chosen; scope:
+-- docs/conformance-testing-plan.md#deployment-rooted-local-histories.
+import Midnight.ContractDSL.Lifecycle
+import Midnight.ContractDSL.LifecycleProperties
+import Passport.AccountLifecycle
 
 -- B. Local VM properties and their statement definitions, not compiler refinement.
 -- Interpreter/DSL replay, opcode codec, then typed map/set representation.
@@ -69,6 +76,7 @@ import Conformance.FullAccountProof
 import Conformance.VMProof
 import Conformance.VMEncodingProof
 import Conformance.VMAccountProof
+import Midnight.ContractDSL.LifecycleProof
 
 -- Appendix: local evaluation, journals and replay.
 import Midnight.ContractDSL.Program

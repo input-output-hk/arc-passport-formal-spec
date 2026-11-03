@@ -13,8 +13,9 @@ advertised properties.
 [reviewer instructions](docs/agents/readability-reviewer.md) define its execution.
 
 Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
-full-account execution and its definitions → local VM properties → the earlier
-post-bootstrap recovery contract and admission/authority properties.
+full-account execution, its definitions and deployment-rooted local histories →
+local VM properties → the earlier post-bootstrap recovery contract and
+admission/authority properties.
 
 The [pinned-main correspondence run](docs/conformance-testing-plan.md#pinned-main-full-account-execution)
 covers the constructor and all 52 impure circuits at Passport
@@ -26,6 +27,17 @@ structural atomicity/determinism and stale-record rejection by the executable
 grant guard. [`VMProperties`](src/Conformance/VMProperties.agda) states local
 interpreter, codec and typed map/set results. The full-surface comparison is
 not a universal compiler-refinement or on-chain proof.
+[`AccountLifecycle`](src/Passport/AccountLifecycle.agda) instantiates generic
+[deployment-rooted histories](src/Midnight/ContractDSL/Lifecycle.agda) with
+`Account.Transition`; runtime traces can retain refusals from known entrypoints
+but cannot record a constructor call or unknown name. Its
+[induction rules](src/Midnight/ContractDSL/LifecycleProperties.agda) leave the
+invariant and preservation obligations explicit. These are finite local
+histories with no security or environment assumption selected; the
+[lifecycle scope](docs/conformance-testing-plan.md#deployment-rooted-local-histories)
+states what they do not establish, including
+[P5′](docs/security-properties.md#p5--recovery-driven-authority-replacement) and
+[P11](docs/security-properties.md#p11--transaction-safety).
 
 [Recovery assurance](docs/conformance-recovery.md) records the concrete repair,
 corrected-model device-authority results and historical pinned gate evidence.

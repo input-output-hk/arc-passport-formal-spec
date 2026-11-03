@@ -64,6 +64,50 @@ equation. Rejection atomicity follows from `transaction` returning the original
 state. These structural results are not evidence for circuit-specific invariants
 or for the compiled implementation's transaction semantics.
 
+### Deployment-rooted local histories
+
+[`Lifecycle`](../src/Midnight/ContractDSL/Lifecycle.agda) is a universe-polymorphic
+relational interface, independent of Passport, the VM and deterministic execution.
+It separates the deployment-root relation from runtime invocation. `Deploy`'s
+outcome records an instance-defined creation observation; interpreting roots as
+successful creation, and excluding failures, is the instance's responsibility.
+A `History` retains that deployment input/context/result and a standard-library
+`Star` trace of labelled steps, each recording its environment, call and outcome. One identity indexes
+the entire history. Generic runtime calls may have arbitrary supplied semantics;
+the framework alone does not prohibit a call from resetting application state.
+
+[`LifecycleProperties`](../src/Midnight/ContractDSL/LifecycleProperties.agda)
+states conditional trace/history invariant rules, with proofs in
+[`LifecycleProof`](../src/Midnight/ContractDSL/LifecycleProof.agda). The invariant,
+its establishment by deployment and its preservation by steps are parameters,
+not assumptions discharged for Passport.
+
+[`AccountLifecycle`](../src/Passport/AccountLifecycle.agda) supplies the full-account
+instance. Its primitive backend remains arbitrary. Invocation reuses the existing
+full-state `Account.Transition` relation at the context formed from the history
+identity and step environment. `RuntimeCall` carries membership in `runtimeNames`
+from [`FullAccount`](../src/Conformance/FullAccount.agda), which lists only the
+runtime entrypoints; the constructor entry is added separately to the full
+entrypoint list. Runtime traces therefore retain refusals produced by known
+entrypoints (argument, context, state, semantic or primitive), but cannot record
+a constructor call, an unknown name or the dispatcher's unknown-circuit refusal.
+`start` returns either a deployment error or a rooted history; `run` constructs
+a trace from a state, and generic `extend` attaches it to a history with that
+final state. A trace from an arbitrary state alone is not deployment-rooted.
+
+The account environment supplies time, caller and coin witness; the fixed history
+identity supplies `Context.self`. No monotone-time, witness-honesty, signature
+security, fairness or native-admission assumption is imposed. Policies can later
+be predicates on histories, and primitive laws can be explicit theorem parameters.
+These are finite local histories. They are not ledger admission or adoption
+traces, infinite executions, leakage projections or proofs of
+[P5′](security-properties.md#p5--recovery-driven-authority-replacement) or
+[P11](security-properties.md#p11--transaction-safety); no history invariant is
+established for Passport. The existing raw evaluator remains an evaluation
+interface, not an unrestricted lifecycle relation.
+
+### Concrete execution comparison
+
 The harness checks complete ledger state and outputs, exact refusal classes
 and assertion messages, ordered ledger/context observations decoded from
 implementation-produced VM operations, declared assets, recipients, shielded
