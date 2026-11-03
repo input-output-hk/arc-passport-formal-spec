@@ -25,6 +25,20 @@ See [modelling gaps](modelling-gaps-and-account-model.md#1-current-modelling-gap
 for the model's scope. In the proposed UC statements, `≤UC` means simulator
 existence against an ideal functionality with an explicit permitted-leakage port.
 
+The [symbolic signing model](conformance-testing-plan.md#symbolic-signing-and-adversarial-histories)
+records trusted abstract approvals, signing, attacker-owned keys and permanent
+compromise. Its checked results establish persistence and message-level issuance
+provenance in deployment-rooted joint signing/contract histories.
+
+The [concrete authorization layer](conformance-testing-plan.md#contract-level-authorization-evidence)
+adds the source signing requests, verification gates and contract-level statements.
+These are separate from the top-level promises below. Its ideal signing
+interpretation requires available key/digest tokens, while request-level provenance
+also requires agreement with the relevant honest issuances. Neither is a proof of
+concrete cryptographic security. Approval remains an abstract input, not evidence
+of human consent. Ledger-adoption correspondence, confidentiality, guardian
+protocols, liveness and upgrades remain outside this layer.
+
 ## 1. Properties
 
 ### P5' · Recovery-driven authority replacement
@@ -86,12 +100,31 @@ TransactionSafety = ∀ {s} (t : Trace M s₀ s) {tx} →
   × AccountOperationStateBound tx t × WithinCaps tx t × NotReplayed tx t
 ```
 
-Liveness of an authority is checked at adoption, including device/grant
-revocation, grant expiry, and applicable epochs, generations, and nonces.
+The top-level obligation requires authority to be live at adoption, including
+device/grant revocation, grant expiry, and applicable epochs, generations and nonces.
 Unforgeability concerns fresh unauthorised operations under the scheme's
 cryptographic and compromise assumptions, not exclusive production of signature
 bytes: the [ECDSA policy](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/docs/mps-mip/mips/mip-xxxx-signature-schemes.md#L238-L246)
 accepts both `(r, s)` and `(r, n−s)` for the same single execution.
+
+**Checked local contract evidence:** the
+[`device statements`](../src/Conformance/FullAccountDeviceSecurityProperties.agda)
+derive live entry membership, verification, entry rolling and bounded nonce/round
+increments from actual successful device calls. Activation instead requires the
+unconsumed boot commitment; it verifies no signature.
+The [`grant statements`](../src/Conformance/FullAccountGrantSecurityProperties.agda)
+derive active/current/unexpired record checks, caller and object commitments,
+recipient restrictions, per-call and presented cumulative caps, coin bounds,
+verification, and the nonce/spent record stored in the actual final state.
+
+These facts do not yet prove the adoption-level formula. Commitment matches need
+appropriate opening agreement to identify intended keys and policies;
+`cumulative-spend` takes agreement for the two relevant spent openings, not a
+global injectivity axiom. A whole-history accumulated-spend invariant is separate.
+Device `immediate-replay-collision` covers consecutive successful calls on the
+same curve and operation: equal challenges imply distinct typed source preimages
+with equal hashes. It is not a theorem that the same signature cannot verify a
+different effective challenge, nor a whole-history/cross-operation replay theorem.
 
 ### P12 · Snapshot-aware value integrity
 
