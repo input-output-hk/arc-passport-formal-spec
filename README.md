@@ -14,8 +14,16 @@ advertised properties.
 
 Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
 full-account execution, its definitions and deployment-rooted local histories →
-symbolic signing and adversarial interleavings → concrete authorization evidence → local VM properties →
-the earlier post-bootstrap recovery contract and admission/authority properties.
+symbolic signing and adversarial interleavings → concrete authorization and recovery
+occurrences → grants-map effects and per-issuance spending → unshielded accounting →
+restricted outsider preservation → local VM properties → the earlier post-bootstrap
+recovery contract and admission/authority properties.
+
+The [proof status report](docs/proof-status-report.md) inventories checked results,
+unfinished obligations and implementation findings.
+The ordered [authorization statement map](docs/conformance-testing-plan.md#authorization-statement-map)
+and [local history results](docs/conformance-testing-plan.md#local-history-invariants)
+link each statement module and explain its role.
 
 The [pinned-main correspondence run](docs/conformance-testing-plan.md#pinned-main-full-account-execution)
 covers the constructor and all 52 impure circuits at Passport

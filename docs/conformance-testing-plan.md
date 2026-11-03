@@ -26,6 +26,8 @@ statement definitions explicitly.
    state, execution/effects, the effect monad and primitive interface.
    [`FullAccountLayouts`](../src/Conformance/FullAccountLayouts.agda) names the
    Compact tuple fields.
+   [`FullAccountExecution`](../src/Conformance/FullAccountExecution.agda) supplies
+   the accepted-execution witnesses used in the security statements.
    [`FullAccountCrypto`](../src/Conformance/FullAccountCrypto.agda) specifies
    typed preimages and authentication checks;
    [`FullAccountBody`](../src/Conformance/FullAccountBody.agda) and
@@ -41,7 +43,15 @@ statement definitions explicitly.
    [`FullAccountProof`](../src/Conformance/FullAccountProof.agda).
    The grant claims assume the stated ledger advance; they do not prove that every
    successful compiled recovery or revocation performs it.
-4. [`VMProperties`](../src/Conformance/VMProperties.agda): explicit statements
+4. [`LifecycleProperties`](../src/Midnight/ContractDSL/LifecycleProperties.agda),
+   [`SymbolicSigningProperties`](../src/Midnight/ContractDSL/SymbolicSigningProperties.agda)
+   and [`AdversarialLifecycleProperties`](../src/Midnight/ContractDSL/AdversarialLifecycleProperties.agda):
+   rooted histories, symbolic signing knowledge and their interleaving.
+5. The [authorization statement map](#authorization-statement-map): source
+   guards, dispatcher/request correspondence, provenance and recovery occurrences.
+6. [Local history invariants](#local-history-invariants): grants-map mutations,
+   accumulated spending, unshielded accounting and restricted outsider preservation.
+7. [`VMProperties`](../src/Conformance/VMProperties.agda): explicit statements
    and separate proof references for interpreter/admission soundness, codec
    round trips and typed map/set correspondence. Their definitions are in
    [`VM`](../src/Conformance/VM.agda),
@@ -49,7 +59,7 @@ statement definitions explicitly.
    [`VMAccount`](../src/Conformance/VMAccount.agda). The interpreter uses the
    existing ledger DSL. These are local primitive results, not whole
    generated-circuit lowering proofs.
-5. [`full-main.ts`](../conformance/harness/full-main.ts): runs the generated
+8. [`full-main.ts`](../conformance/harness/full-main.ts): runs the generated
    constructor/circuits and real production witnesses independently, invokes
    the compiled Agda account evaluator and concrete formal VM, and compares
    their observations.
@@ -170,10 +180,34 @@ evidence below.
 
 ### Contract-level authorization evidence
 
-The concrete reading route starts with
-[`FullAccountSignatureBinding`](../src/Conformance/FullAccountSignatureBinding.agda)
-and ends at [`AccountSecurityProperties`](../src/Passport/AccountSecurityProperties.agda).
-It separates three obligations:
+#### Authorization statement map
+
+Follow these statement modules in the order used by `Passport.agda`; each links
+its definitions and separate proof implementation.
+
+- [`FullAccountSignatureBindingProperties`](../src/Conformance/FullAccountSignatureBindingProperties.agda):
+  exact source encodings, verifier extraction and conditional request provenance.
+- [`FullAccountDeviceSecurityProperties`](../src/Conformance/FullAccountDeviceSecurityProperties.agda):
+  live device authorization, bootstrap, state advancement and immediate replay boundaries.
+- [`FullAccountGrantSecurityProperties`](../src/Conformance/FullAccountGrantSecurityProperties.agda):
+  grant guards, presented caps and actual final settlement records.
+- [`FullAccountRecoverySecurityProperties`](../src/Conformance/FullAccountRecoverySecurityProperties.agda):
+  submission, cancellation, finalisation and pending-record effects.
+- [`AccountRequestDispatchProperties`](../src/Passport/AccountRequestDispatchProperties.agda):
+  the checked bridge from accepted runtime dispatch to actual source requests,
+  required tokens and their availability.
+- [`AccountSecurityProperties`](../src/Passport/AccountSecurityProperties.agda):
+  separate per-path request computations and request-view provenance, composed
+  with the dispatcher bridge rather than one whole-account evidence bundle.
+  For its `Encodes` premise, the signature-binding module's `authorisation-message`
+  uses device/grant challenge and verification evidence; `recovery-message`
+  uses submission tag/hash evidence for both the recovery and successor keys.
+- [`AccountRecoveryOccurrenceProperties`](../src/Passport/AccountRecoveryOccurrenceProperties.agda):
+  actual submission occurrences and finalisation over deployment-rooted histories.
+
+#### Assumptions and interpretation
+
+These statements separate three obligations:
 
 1. **Source execution.** Device, grant and recovery predicates describe the guards,
    signed requests and state updates of the actual full-account evaluator.
@@ -191,18 +225,29 @@ It separates three obligations:
    reduction. Existing tokens remain replayable; source state guards, not token
    consumption or signature-byte uniqueness, must prevent a second execution.
 
+#### Caps, commitments and pending histories
+
 Grant cap guards compare the presented previous spend and current amount.
 `SpentOpeningsAgree` is an explicit agreement premise for the two relevant spent
 openings, allowing those local numerical facts to be read as an accumulated total.
 It is not a proof of SHA-256 binding or, by itself, a whole-history cap invariant.
-Likewise, matching pending cells at two endpoints is not proof that a submission
-occurred in the history or remained uncancelled between them.
+Matching pending cells at two endpoints is not proof that a submission occurred
+in the history or remained uncancelled between them. The checked
+`AccountRecoveryOccurrenceProperties.pending-origin` and `Joint.joint-pending-origin` instead
+identify an actual accepted submission in the deployment-rooted account trace,
+followed only by refusals or accepted calls preserving the pending cells.
+`finalisation-enacts-occurrence` ties the enacted successor and recovery key,
+and the checked deadline, to that occurrence, excluding an intervening accepted submission,
+cancellation or finalisation. The lower-level recovery endpoint-matching
+statements are not used as substitutes for this history claim.
 
 Device membership and the boot, grant-id, object and recipient checks are
 commitment-level facts. Reading equal digests as the intended configured key,
 asset or recipient additionally requires agreement of the relevant openings.
 Those interpretations are not consequences of the numerical cap guards or of
 signature provenance alone.
+
+#### Native execution evidence
 
 A compiled native authorization audit exercised **231 calls**: the existing 225
 conformance fixtures plus six represented-state cumulative-cap boundaries
@@ -216,6 +261,42 @@ run separately covered all 53 entrypoints with 225 observations and zero mismatc
 These results do not authenticate environment time, callers or coin witnesses,
 establish guardian consent, model human approval, prove fairness, or bridge local
 execution to ledger adoption. No such assumptions are silently added.
+
+### Local history invariants
+
+[`GrantEffectsProperties`](../src/Passport/GrantEffectsProperties.agda) extracts
+actual issuance, revocation and settlement changes and classifies runtime
+grants-map effects. Unlike `grant-final-state`'s identifier lookup and field facts,
+its spend mutation describes the whole final map, supporting history induction.
+The intermediate operation-body state may differ in other cells after device
+authorization, but its grants cell agrees with the original before-state.
+
+[`GrantSpendingProperties`](../src/Passport/GrantSpendingProperties.agda) proves
+accumulated spending stays within each issuance cap, for current and archived
+episodes, and that stored commitments/nonces match the history.
+`HistoryAgreement` assumes only agreement of relevant spent-opening pairs;
+initial zero spending and preservation are derived from source execution.
+Reissue/reset archives earlier episodes rather than discarding their totals.
+The native smoke covered 36 observations across six issuance episodes and all
+three signing schemes, including exact caps, above-cap refusals and reissue.
+
+[`UnshieldedAccountingProperties`](../src/Passport/UnshieldedAccountingProperties.agda)
+connects actual final balance maps to the source's declared transfer effects.
+For each color, every deployment-rooted history satisfies
+`stored balance + cumulative sends = cumulative receives`. The proof derives
+deposit bounds, withdrawal funding and other-entrypoint preservation from the
+evaluator; it assumes no accounting-preservation callback. Refused attempts
+preserve state and contribute no committed effects. This is a P12 precursor,
+not authenticated ledger accounting, fee attribution or snapshot reporting.
+Its native smoke covered 42 scenarios on all three signing schemes.
+
+[`OutsiderPreservationProperties`](../src/Passport/OutsiderPreservationProperties.agda)
+covers accepted permissionless deposits and refused attempts. Such extensions
+preserve stored authority/recovery resources and enrolled device membership,
+while each accepted deposit consumes one round. The statements expose that exact
+cost and the finite Uint64 budget; successful bootstrap and finalisation are
+explicitly excluded. The native smoke covered 15 reachable observations.
+No availability, fee, proving-resource or liveness guarantee follows.
 
 ### Concrete execution comparison
 

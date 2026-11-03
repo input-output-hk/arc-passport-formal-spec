@@ -12,6 +12,8 @@ import Passport.Account
 -- Values, state, execution/effects and primitive interface; named ABI projections.
 import Conformance.FullAccountTypes
 import Conformance.FullAccountLayouts
+-- Accepted source-execution witnesses used in the security statements.
+import Conformance.FullAccountExecution
 -- Typed cryptographic preimages/authentication, source bodies, then grant twins.
 import Conformance.FullAccountCrypto
 import Conformance.FullAccountBody
@@ -49,7 +51,27 @@ import Conformance.FullAccountGrantSecurityProperties
 import Conformance.FullAccountRecoverySecurity
 import Conformance.FullAccountRecoverySecurityProperties
 import Passport.AccountSecurity
+import Passport.AccountRequestDispatchProperties
 import Passport.AccountSecurityProperties
+import Passport.AccountRecoveryOccurrence
+import Passport.AccountRecoveryOccurrenceProperties
+
+-- Actual issuance, revocation and settlement mutations of the grants map.
+import Passport.GrantEffects
+import Passport.GrantEffectsProperties
+-- Accumulated caps per actual issuance, with relevant spent-opening agreement.
+import Passport.GrantSpending
+import Passport.GrantSpendingProperties
+
+-- Per-color balance conservation against declared contract effects, not adopted
+-- ledger balances, fees or snapshot reports.
+import Passport.UnshieldedAccounting
+import Passport.UnshieldedAccountingProperties
+
+-- Restricted outsider histories preserve stored authority/recovery resources,
+-- not execution availability: deposits consume finite round/inbox capacity.
+import Passport.OutsiderPreservation
+import Passport.OutsiderPreservationProperties
 
 -- B. Local VM properties and their statement definitions, not compiler refinement.
 -- Interpreter/DSL replay, opcode codec, then typed map/set representation.
@@ -101,7 +123,16 @@ import Conformance.FullAccountSignatureBindingProof
 import Conformance.FullAccountDeviceSecurityProof
 import Conformance.FullAccountGrantSecurityProof
 import Conformance.FullAccountRecoverySecurityProof
+import Conformance.FullAccountRecoverySecurityHelpers
+import Conformance.FullAccountRecoverySecurityStages
+import Conformance.FullAccountRecoverySecurityPendingProof
 import Passport.AccountSecurityProof
+import Passport.AccountRecoveryOccurrenceProof
+import Passport.GrantEffectsProof
+import Passport.GrantSpendingProof
+import Passport.UnshieldedAccountingProof
+import Passport.UnshieldedAccountingNeutral
+import Passport.OutsiderPreservationProof
 import Conformance.VMProof
 import Conformance.VMEncodingProof
 import Conformance.VMAccountProof
@@ -112,7 +143,6 @@ import Midnight.ContractDSL.AdversarialLifecycleProof
 -- Appendix: local evaluation, journals and replay.
 -- Optional executable signing decisions and certification of model transitions.
 import Midnight.ContractDSL.SymbolicSigningExecution
-import Conformance.FullAccountExecution
 import Midnight.ContractDSL.Program
 import Midnight.ContractDSL.Ledger
 import Midnight.ContractDSL.Properties

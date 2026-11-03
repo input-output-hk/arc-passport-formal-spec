@@ -11,7 +11,7 @@ open import Conformance.FullAccountTypes
 -- witnessed accepting submission computation; finalise-enacts-submission then
 -- equates the enacted record with that one. This is endpoint matching, not a
 -- history occurrence or an unchanged-since claim: those are established over
--- deployment-rooted traces in Passport.AccountSecurityProperties. Local source
+-- deployment-rooted traces in Passport.AccountRecoveryOccurrenceProperties. Local source
 -- execution only: no ledger adoption, cryptographic law (P is uninterpreted),
 -- guardian consent, quorum honesty, or timely cancellation by a live device.
 -- Definitions: FullAccountRecoverySecurity; proofs: ...RecoverySecurityProof.

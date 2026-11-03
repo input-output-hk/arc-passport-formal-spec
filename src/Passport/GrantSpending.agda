@@ -2,8 +2,14 @@
 
 open import Conformance.FullAccountTypes
 
--- Issuance identities retain the source record's epoch, generation and
--- issuedAt, not merely the reusable grant-map identifier.
+-- The book is auxiliary accounting obtained by replaying accepted history, not
+-- another contract state. It records accepted amounts under each actual issuance;
+-- identities retain epoch, generation and issuedAt, not just the reusable map id.
+-- observeAttempt re-runs deterministic dispatch at the recorded before-state to
+-- distinguish commitment from refusal; a checked trace ties this replay to its
+-- observed transition. It cannot admit a call independently of the evaluator.
+-- HistoryAgreement supplies only relevant spent-opening agreement at accepted
+-- grant calls; initialization and cap preservation are conclusions, not premises.
 module Passport.GrantSpending (P : Primitives) where
 
 
@@ -90,6 +96,7 @@ evolve noCharge b = b
 open Model.AccountSemantics P using (Entrypoint; construct; activation; device; grant;
   depositPublic; depositPrivate; submitRecovery; finaliseRecovery; parseGrant)
 
+-- Same source argument split as AccountSecurity.grantAuthorisation.
 parseGrantAuth : Curve → Operation → List Value → GrantAuth
 parseGrantAuth c withdrawUnshielded xs = parseGrant c (drop 3 xs) none none
 parseGrantAuth c _ xs = parseGrant c (drop 5 xs) (get 3 xs) (get 4 xs)
@@ -119,6 +126,8 @@ BookBounded b = All WithinCap (Book.current b) × All WithinCap (Book.completed 
 
 -- The map correspondence includes the stored nonce and an actual opening of
 -- the sum. The numerical spentPrev guard alone cannot establish this relation.
+-- spentCommit is state-independent: state [] is a canonical evaluation state,
+-- not an assumption that the account is undeployed or has an empty grants map.
 record Opens (ep : Episode) (g : Value) : Set where
   field identityKept : issuanceOf (episodeKey ep) g ≡ Episode.issuanceIdentity ep
         scopeCapKept : number (scopeCap (grantScope g)) ≡ Episode.capValue ep
@@ -135,6 +144,8 @@ record Accounted (b : Book) (s : State) : Set where
   field correspondence : Corresponds (Book.current b) (fields (cell "grants" s))
         bounded : BookBounded b
 
+-- Quantify only over a current episode whose key is the call's computed grant
+-- id. The premise relates that episode's historical opening to the presented one.
 CallAgreement : Entrypoint → Context → List Value → State → Book → Set
 CallAgreement (grant c op) ctx xs s b = ∀ ep →
   findEpisode (episodeKey ep) (Book.current b) ≡ just ep →
@@ -143,6 +154,9 @@ CallAgreement (grant c op) ctx xs s b = ∀ ep →
     (Episode.saltValue ep) (total ep)
 CallAgreement _ _ _ _ _ = Data.Unit.Base.⊤
 
+-- These lookups use the same actual entrypoints/name table as Model.dispatch,
+-- AccountSecurity.resolve, OutsiderPreservation.resolve and
+-- UnshieldedAccounting.dispatchedAction; there is no additional dispatch policy.
 observeSuccessful : Context → RawCall → State → State → Book → Book
 observeSuccessful ctx call s t b
   with Model.AccountSemantics.lookupEntrypoint P (name call) (Model.AccountSemantics.entrypoints P)

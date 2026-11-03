@@ -8,6 +8,9 @@ import Conformance.FullAccountSignatureBinding as SignatureBinding
 -- Obtain that evidence from FullAccountDeviceSecurityProperties.device-call-evidence,
 -- FullAccountGrantSecurityProperties.grant-call-evidence, or
 -- FullAccountRecoverySecurityProperties.submit-evidence respectively.
+-- FullAccountSignatureBindingProperties.authorisation-message supplies Encodes
+-- from device/grant challenge and verification evidence. Its recovery-message
+-- supplies Encodes for both submission keys using the submission's tag/hash runs.
 -- AccountRequestDispatchProperties connects these source builders to the actual
 -- dispatcher's signedRequests and requiredTokens. Its dispatched-available feeds
 -- request-views at AccountSecurity.Histories.signingHistory h, using the joint
