@@ -85,11 +85,28 @@ submission provenance and deadline/cancellation/replay/rejection results.
 the stamped-map repair, including ordinary rotation, wrong/stale bindings,
 deadline equality, cancellation after the deadline, and permissionless finalise.
 
-The exclusion assumes key-entry separation, a fixed compromise set, an
-uncompromised successor, and no subsequent authorised enrolment of any compromised
-key encoding. Cryptographic intent/authentication, full cancelled-submission
-occurrence provenance, model-to-circuit refinement, grant-authority exclusion,
-resource replacement, and deployment are not established.
+That earlier admission-model exclusion assumes key-entry separation, a fixed
+compromise set, an uncompromised successor, and no subsequent authorised enrolment
+of a compromised key encoding. Its scope does not establish deployment, full
+cancelled-submission occurrence provenance or model-to-circuit refinement.
+
+**Checked pinned-main local counterpart:** the
+[`source recovery statements`](../src/Conformance/FullAccountRecoverySecurityProperties.agda)
+extract current recovery-key and successor-key verifier acceptance on the exact
+source request, its stored epoch/nonce and signed time bound, pending installation,
+cancellation, and finalisation's deadline and replacement effects.
+The [`account history statements`](../src/Passport/AccountRecoveryOccurrenceProperties.agda)
+then prove that a pending record in a deployment-rooted history comes from an
+actual accepted submission occurrence, followed only by refused attempts or
+accepted calls preserving it. There is no intervening accepted submission,
+cancellation or finalisation. `finalisation-enacts-occurrence` identifies the
+enacted successor and recovery key, and the checked deadline, with that occurrence.
+
+This closes the local occurrence gap, not the top-level assurance gap.
+Request-level symbolic provenance uses the stated signing-token and
+relevant-request agreement premises. Concrete cryptographic realization,
+guardian consent, trustworthy chain time, ledger adoption and timely cancellation
+remain separate obligations.
 
 ### P11 · Transaction safety
 
@@ -120,7 +137,16 @@ verification, and the nonce/spent record stored in the actual final state.
 These facts do not yet prove the adoption-level formula. Commitment matches need
 appropriate opening agreement to identify intended keys and policies;
 `cumulative-spend` takes agreement for the two relevant spent openings, not a
-global injectivity axiom. A whole-history accumulated-spend invariant is separate.
+global injectivity axiom.
+
+The [`whole-history spending statements`](../src/Passport/GrantSpendingProperties.agda)
+now prove that every current or archived issuance episode stays within its cap,
+and that its stored commitment and nonce match accumulated accepted spending.
+`HistoryAgreement` supplies agreement only for the relevant spent-opening pairs;
+it does not assume the caller's presented total already equals historical spending.
+Reissue and reset preserve the accounting of earlier episodes rather than erasing
+their spending. These remain local contract results, not ledger-adoption proofs.
+
 Device `immediate-replay-collision` covers consecutive successful calls on the
 same curve and operation: equal challenges imply distinct typed source preimages
 with equal hashes. It is not a theorem that the same signature cannot verify a
@@ -158,6 +184,24 @@ separately authorised spend.
 The existing `Sound` has no asset, snapshot, or completeness fields. The
 conditional accounting theorem proves neither `SnapshotSound` nor
 `SnapshotProgress`; both require revised query semantics and concrete proofs.
+
+**Checked local precursor:** the
+[`unshielded accounting statements`](../src/Passport/UnshieldedAccountingProperties.agda)
+derive exact per-color accounting from actual runtime executions, for arbitrary
+primitive backends. Accepted deposits credit the declared received amount;
+device/grant withdrawals debit the declared sent amount with sufficient funding.
+Other entrypoints preserve the balance map, and refused calls preserve the whole
+state. From deployment, for every color:
+`stored balance + cumulative declared sends = cumulative declared receives`.
+Absent entries mean zero; the proof includes constructor initialization and
+actual final states after authentication and operation tails.
+
+This connects storage to emitted `receiveUnshielded`/`sendUnshielded` effects,
+not to authenticated or adopted ledger assets. Native/model execution agreed on
+42 scenarios across all three signing schemes. `SnapshotSound` still needs
+ledger-adoption correspondence, fee attribution and snapshot/completeness-aware
+reporting; `SnapshotProgress` additionally needs the synchronization and scheduling
+model described above.
 
 ### P13 · Funds availability
 
@@ -197,6 +241,31 @@ Losing the sole change description before inbox append can strand previously
 recoverable value, violating P13. That mandatory durability obligation remains
 open: recovery must survive a crash or total device loss in that window without
 an extra client copy. Neither gap is fixed or proved here.
+
+**Pinned-main counterexamples:** native probes at
+`fc19e471536febb2133f20e817847251622dcdf5` exercised both shielded destination
+paths on jubjub, k256 and P256. Authorized grant withdrawals accepted:
+
+- ciphertext under the actual current key describing value 999 while the returned
+  change had value 6; and
+- ciphertext encrypted to a different real key while the separately signed
+  `enc_pk` argument matched the current `enc_key`.
+
+The supplied entry was appended atomically, but its contents were not bound to
+the returned change or the declared recipient key. The
+[grant bound/key guard](https://github.com/midnightntwrk/passport/blob/fc19e471536febb2133f20e817847251622dcdf5/contract/contracts/account.compact#L1931-L1938)
+does not establish either relation. Device withdrawals in the same probes returned
+change without appending an inbox entry; the examined client uses separate
+withdrawal and backfill submissions.
+
+The 123-observation probe included correct-encryption controls, exact spends,
+stale-key refusals and replay preservation, using production signatures and
+X25519/HKDF/AES-GCM. This is native execution evidence, not an on-chain attack or
+a proof that no alternative recovery protocol could exist. The complete
+durability/binding candidate is therefore **not established**: it needs an
+enforced description/encryption relation against malicious authorized delegates,
+and an implemented crash-safe device protocol. An append-only theorem or an
+honest-client encryption law would not discharge those obligations.
 
 ### P14 · Private proving
 
@@ -281,5 +350,22 @@ NonGriefability = ∀ {s s' d op} (t : Trace M s₀ s) (u : Trace M s s') →
 DeploymentAuthenticity = ∀ {s c} (t : Trace M s₀ s) →
   attaches c ∈ᵗ t → codeOf c ≡ canonicalCode
 ```
+
+**Checked restricted preservation:**
+[`OutsiderPreservationProperties`](../src/Passport/OutsiderPreservationProperties.agda)
+covers actual rooted local histories extended only by permissionless deposits
+and refused runtime attempts. These steps retain enrolled device membership
+and selected stored authority, published recovery and pending recovery cells.
+Successful bootstrap and permissionless recovery finalisation are explicitly
+excluded: they legitimately change authority.
+
+The same development proves each accepted deposit consumes one round and bounds
+their number by the remaining Uint64 round capacity. This is structural
+preservation, **not** the `AvailableVia` conclusion above. Inbox capacity,
+existing nonce exhaustion, fees/proving resources, time-dependent expiry and
+native asset admission remain separate. Preserved recovery bytes need not be
+decryptable or sufficient for recovery. A 15-observation native/model/VM smoke
+exercised deposits, refusals, pending-record preservation and the excluded
+bootstrap/finalisation boundaries.
 
 The sketches assume adopted ledger state is final. Reorg semantics remain open.
