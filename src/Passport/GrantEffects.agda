@@ -2,7 +2,11 @@
 
 open import Conformance.FullAccountTypes
 
--- Source-derived grants-map mutations, shared by spending and revocation.
+-- Grants-map effects of successful source evaluation. GrantEffect distinguishes
+-- preservation, issuance, revocation, recovery clearing and withdrawal settlement.
+-- Its source state for issuance/revocation is the intermediate state at the
+-- mutation: other cells may already have changed, but its grants cell equals
+-- the original before state's. Thus the mutation still describes that map.
 module Passport.GrantEffects (P : Primitives) where
 
 import Conformance.FullAccount as Model
@@ -56,15 +60,24 @@ record RevokeResult (identifier : Value) (before after : State) : Set where
         installed : cell "grants" after ≡
           tuple (insertMap identifier (revokedRecord old) (fields (cell "grants" before)))
 
+-- Unlike GrantFinalState.storedGrant (a lookup at the final identifier), this
+-- records the entire map update, including preservation of the other entries.
+-- Both use the same settledGrant record from the call's settlement evidence.
 record SpendMutation (c : Curve) (op : Operation) (ctx : Context) (ga : GrantAuth)
     (xs : List Value) (before after : State) : Set where
   field evidence : GrantCallEvidence c op ctx ga xs before
-        installed : cell "grants" after ≡ tuple (insertMap (GrantCallEvidence.identifier evidence)
-          (settledGrant (GrantCallEvidence.grantRecord evidence)
-            (suc (number (grantNonce (GrantCallEvidence.grantRecord evidence))))
-            (Settlement.commitment (GrantCallEvidence.settlement evidence)))
-          (fields (cell "grants" before)))
 
+  settledValue : Value
+  settledValue = settledGrant (GrantCallEvidence.grantRecord evidence)
+    (suc (number (grantNonce (GrantCallEvidence.grantRecord evidence))))
+    (Settlement.commitment (GrantCallEvidence.settlement evidence))
+
+  field installed : cell "grants" after ≡ tuple
+          (insertMap (GrantCallEvidence.identifier evidence) settledValue (fields (cell "grants" before)))
+
+-- kept covers paths with no grants mutation; cleared covers recovery finalisation,
+-- which invalidates all grants. RuntimeEntrypoint below restricts this summary
+-- to public dispatch arms, excluding constructor and internal-only grant arms.
 data GrantEffect (before after : State) : Set where
   kept : cell "grants" after ≡ cell "grants" before → GrantEffect before after
   grantIssued : ∀ xs source → cell "grants" source ≡ cell "grants" before →
