@@ -4,7 +4,7 @@ Target: Passport [`fc19e471536febb2133f20e817847251622dcdf5`](https://github.com
 
 ## Current state
 
-All packages in the proof inventory below have passed the integrated Agda entrypoint check after the focused readability refactoring, including accumulated grant spending. Revocation/recovery exclusion is still under verification, and change-durability/binding has concrete counterexamples. Overall readability acceptance, integration of any successful revocation result and remaining cleanup are pending.
+All packages in the proof inventory below are proved, merged and covered by the integrated Agda entrypoint check, including revocation/recovery exclusion. Four of the five requested additional property packages succeeded; change-durability/binding has concrete counterexamples. These are local source-execution proofs, not end-to-end proofs of the top-level security promises.
 
 ## Proof inventory
 
@@ -32,6 +32,18 @@ The generic [symbolic signing](../src/Midnight/ContractDSL/SymbolicSigningProper
 
 [Whole-history spending proofs](../src/Passport/GrantSpendingProperties.agda) bound every current or archived issuance episode by its original cap and relate stored commitments/nonces to accumulated accepted spends. The sole additional cryptographic premise is agreement of the relevant spent-opening pairs; reissue, revocation/reset, recovery and refused calls are handled by the source-derived history accounting.
 
+### Grant revocation and stale-record exclusion
+
+[Revocation proofs](../src/Passport/RevocationExclusionProperties.agda) keep a revoked identifier absent or inactive until an actual matching device-authorized issuance, and exclude the corresponding source grant call before that boundary. They also show that old-epoch and old-generation records remain excluded after recovery or revoke-all.
+
+### Post-recovery device exclusion
+
+[Device-origin proofs](../src/Passport/RevocationExclusionProperties.agda) identify every later live entry as the installed recovery successor or an actual subsequent insertion occurrence. Excluding a queried device opening requires separation from that successor and those insertions, explicitly allowing re-enrolment and rejecting an unconditional permanent-key-ban interpretation.
+
+### Counters and issuance ordering
+
+[Counter proofs](../src/Passport/RevocationExclusionProperties.agda) derive nondecreasing authorization nonce, device epoch and grant generation from actual source executions rather than assuming monotonicity. Ordered issuance occurrences have strictly increasing issuance stamps, including across revocation, resets and recovery.
+
 ### Unshielded accounting
 
 [Accounting proofs](../src/Passport/UnshieldedAccountingProperties.agda) establish, for every color and deployment-rooted history, that stored balance plus cumulative declared sends equals cumulative declared receives. They derive funding, arithmetic bounds and preservation from actual executions, but do not identify those declared effects with authenticated or adopted ledger assets.
@@ -41,10 +53,6 @@ The generic [symbolic signing](../src/Midnight/ContractDSL/SymbolicSigningProper
 [Outsider-history proofs](../src/Passport/OutsiderPreservationProperties.agda) show that accepted permissionless deposits and refused attempts preserve stored authority/recovery resources and enrolled device membership. They account exactly for deposit round consumption and explicitly exclude successful bootstrap and finalisation, so they are not availability or liveness proofs.
 
 ## Missing or unfinished obligations
-
-### Whole-history revocation and recovery exclusion
-
-History-wide exclusion of revoked/stale grants and pre-recovery devices is still under formal verification, with explicit exceptions for actual reissue or re-enrolment. The same unfinished package seeks to prove that relevant source counters never decrease, preventing earlier epoch/generation values from becoming current again.
 
 ### Concrete cryptographic realization
 
@@ -91,6 +99,10 @@ The examined device path returns change before a separate inbox-backfill submiss
 ### Structural preservation has a finite cost
 
 Permissionless deposits preserve authority records but consume the finite round budget. This makes the distinction between non-corruption and non-griefability concrete: the former result cannot simply be relabeled as availability.
+
+### Reauthorization is an explicit exception
+
+The checked results permit explicit old-key re-enrolment and same-id grant reissue. An unconditional permanent-ban formulation would exclude supported authorization paths, so the theorems track those actual occurrences.
 
 ### Execution evidence is broader than a proof of refinement
 

@@ -108,6 +108,13 @@ relevant-request agreement premises. Concrete cryptographic realization,
 guardian consent, trustworthy chain time, ledger adoption and timely cancellation
 remain separate obligations.
 
+The [`full-source exclusion statements`](../src/Passport/RevocationExclusionProperties.agda)
+derive the recovery epoch advance and identify every later live device entry as
+the installed successor or an actual subsequent insertion occurrence.
+Exclusion of a queried device opening additionally requires separation from
+that successor and those insertions. Explicit re-enrolment, successor reuse and
+relevant collisions are not hidden by an unconditional permanent-key ban.
+
 ### P11 · Transaction safety
 
 ```agda
@@ -146,6 +153,14 @@ and that its stored commitment and nonce match accumulated accepted spending.
 it does not assume the caller's presented total already equals historical spending.
 Reissue and reset preserve the accounting of earlier episodes rather than erasing
 their spending. These remain local contract results, not ledger-adoption proofs.
+
+The [`revocation history statements`](../src/Passport/RevocationExclusionProperties.agda)
+derive nondecreasing authorization nonce, device epoch and grant generation,
+strictly increasing issuance stamps, and persistent stale-record exclusion.
+A revoked identifier remains absent or inactive until an actual matching
+device-authorized issuance occurrence; the corresponding source grant call
+cannot succeed before that boundary. Reissuance is an explicit exception,
+not inferred from equality of endpoint records.
 
 Device `immediate-replay-collision` covers consecutive successful calls on the
 same curve and operation: equal challenges imply distinct typed source preimages

@@ -62,6 +62,10 @@ import Passport.GrantEffectsProperties
 -- Accumulated caps per actual issuance, with relevant spent-opening agreement.
 import Passport.GrantSpending
 import Passport.GrantSpendingProperties
+-- Actual revocation/recovery boundaries and reauthorization occurrences.
+-- Device exclusion additionally requires relevant-entry separation.
+import Passport.RevocationExclusion
+import Passport.RevocationExclusionProperties
 
 -- Per-color balance conservation against declared contract effects, not adopted
 -- ledger balances, fees or snapshot reports.
@@ -130,6 +134,7 @@ import Passport.AccountSecurityProof
 import Passport.AccountRecoveryOccurrenceProof
 import Passport.GrantEffectsProof
 import Passport.GrantSpendingProof
+import Passport.RevocationExclusionProof
 import Passport.UnshieldedAccountingProof
 import Passport.UnshieldedAccountingNeutral
 import Passport.OutsiderPreservationProof

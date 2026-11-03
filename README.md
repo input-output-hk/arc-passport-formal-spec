@@ -15,8 +15,9 @@ advertised properties.
 Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
 full-account execution, its definitions and deployment-rooted local histories →
 symbolic signing and adversarial interleavings → concrete authorization and recovery
-occurrences → grants-map effects and per-issuance spending → unshielded accounting →
-restricted outsider preservation → local VM properties → the earlier post-bootstrap
+occurrences → grants-map effects and per-issuance spending → revocation/recovery
+exclusion → unshielded accounting → restricted outsider preservation →
+local VM properties → the earlier post-bootstrap
 recovery contract and admission/authority properties.
 
 The [proof status report](docs/proof-status-report.md) inventories checked results,

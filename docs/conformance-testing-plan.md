@@ -50,7 +50,8 @@ statement definitions explicitly.
 5. The [authorization statement map](#authorization-statement-map): source
    guards, dispatcher/request correspondence, provenance and recovery occurrences.
 6. [Local history invariants](#local-history-invariants): grants-map mutations,
-   accumulated spending, unshielded accounting and restricted outsider preservation.
+   accumulated spending, revocation/recovery exclusion, unshielded accounting
+   and restricted outsider preservation.
 7. [`VMProperties`](../src/Conformance/VMProperties.agda): explicit statements
    and separate proof references for interpreter/admission soundness, codec
    round trips and typed map/set correspondence. Their definitions are in
@@ -279,6 +280,18 @@ initial zero spending and preservation are derived from source execution.
 Reissue/reset archives earlier episodes rather than discarding their totals.
 The native smoke covered 36 observations across six issuance episodes and all
 three signing schemes, including exact caps, above-cap refusals and reissue.
+
+[`RevocationExclusionProperties`](../src/Passport/RevocationExclusionProperties.agda)
+derives nondecreasing source counters, strict recovery/revoke-all advances and
+strictly ordered issuance stamps. Revoked identifiers remain disabled until
+actual matching issuance occurrences; stale epoch/generation records remain
+excluded. After recovery, live device entries originate in the installed
+successor or actual subsequent insertion occurrences. Excluding a queried
+opening requires `RelevantEntrySeparation` against precisely those entries,
+not universal hash injectivity or an assumed authorization invariant.
+Explicit reissue/re-enrolment remains possible.
+The focused native smoke covered 22 observations, including those positive
+reauthorization controls, with 63 counter comparisons and five rollback refusals.
 
 [`UnshieldedAccountingProperties`](../src/Passport/UnshieldedAccountingProperties.agda)
 connects actual final balance maps to the source's declared transfer effects.
