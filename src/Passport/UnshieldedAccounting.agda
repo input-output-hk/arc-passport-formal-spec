@@ -49,6 +49,9 @@ sentTotal color [] = 0
 sentTotal color (sent c a ∷ es) = amountFor color c a + sentTotal color es
 sentTotal color (_ ∷ es) = sentTotal color es
 
+-- An independently specified expected balance effect, selected from the resolved
+-- entrypoint and arguments, not inferred from the evaluator's resulting state
+-- or effect journal. Accounting compares both evaluator outputs with this action.
 data Action : Set where
   idle : Action
   credit debit : Value → ℕ → Action
@@ -58,6 +61,8 @@ actionTransfers idle = []
 actionTransfers (credit color amount) = received color amount ∷ []
 actionTransfers (debit color amount) = sent color amount ∷ []
 
+-- Natural subtraction truncates at zero. Accounting additionally requires Funded,
+-- so a proved debit has sufficient balance and cannot exploit that truncation.
 updatedMap : Action → State → Value
 updatedMap idle s = balanceMap s
 updatedMap (credit color amount) s = tuple
@@ -65,6 +70,8 @@ updatedMap (credit color amount) s = tuple
 updatedMap (debit color amount) s = tuple
   (insertMap color (nat (balance color s ∸ amount)) (fields (balanceMap s)))
 
+-- Only a debit needs a funding premise: idle and credit cannot overdraw, hence
+-- their trivially inhabited equality. This is not an omitted evaluator check.
 Funded : Action → State → Set
 Funded idle s = true ≡ true
 Funded (credit color amount) s = true ≡ true
@@ -90,6 +97,9 @@ module Semantics (P : Primitives) where
   action (grant _ withdrawUnshielded) xs = debit (get 0 xs) (number (get 1 xs))
   action _ xs = idle
 
+  -- The actual AccountSemantics.dispatch lookup: lookupEntrypoint on entrypoints.
+  -- AccountSecurity.resolve applies this same lookup to raw calls;
+  -- OutsiderPreservation.resolve first projects RuntimeCall.request.
   dispatchedAction : RawCall → Action
   dispatchedAction call with lookupEntrypoint (name call) entrypoints
   ... | nothing = idle

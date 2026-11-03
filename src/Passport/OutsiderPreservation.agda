@@ -26,6 +26,9 @@ module Semantics = Model.AccountSemantics P
 module Runs = Generic.Runs lifecycle address
 open Semantics using (Entrypoint; depositPublic; depositPrivate)
 
+-- Exactly AccountSemantics.dispatch's lookupEntrypoint/name/entrypoints lookup.
+-- AccountSecurity.resolve and UnshieldedAccounting.Semantics.dispatchedAction
+-- apply that same lookup directly to the raw RuntimeCall.request.
 resolve : RuntimeCall → Data.Maybe.Base.Maybe Entrypoint
 resolve call = Semantics.lookupEntrypoint (name (RuntimeCall.request call)) Semantics.entrypoints
 
