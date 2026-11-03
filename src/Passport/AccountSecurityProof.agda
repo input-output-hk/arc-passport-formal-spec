@@ -8,8 +8,9 @@ module Passport.AccountSecurityProof (P : Primitives) (address : Value)
   (ownership : SignatureBinding.Key P → Ownership) where
 
 open import Data.Bool.Base using (Bool; true; false; not; _∧_; if_then_else_)
+open import Data.Bool.ListAction using (all)
 open import Data.Empty using (⊥; ⊥-elim)
-open import Data.List.Base using (List; []; _∷_; all; map; take)
+open import Data.List.Base using (List; []; _∷_; map; take)
 import Data.List.Membership.DecPropositional as Membership
 open import Data.List.Membership.Propositional using (_∈_; _∉_)
 open import Data.List.Relation.Unary.All as AllBase using (All; []; _∷_)
@@ -219,20 +220,20 @@ private
   committed-dispatch : ∀ {ctx call before answer effects after} →
     Account.Transition P ctx call before (Account.committed answer effects) after →
     Model.dispatch P ctx call before ≡ accepted answer after effects
-  committed-dispatch {ctx} {call} {before} transition =
-    transaction-committed before (Model.dispatch P ctx call before) (Account.execution transition)
+  committed-dispatch {ctx} {call} {before} committed =
+    transaction-committed before (Model.dispatch P ctx call before) (Account.execution committed)
 
   accepted-dispatch : ∀ env (call : RuntimeCall) {before answer effects after} →
     Account.Transition P (executionContext address env) (RuntimeCall.request call) before
       (Account.committed answer effects) after →
     Σ Entrypoint λ e → isConstructor e ≡ false × Dispatched e env call before answer after effects
-  accepted-dispatch env call {before} transition
+  accepted-dispatch env call {before} committed
     with dispatch-resolves (executionContext address env) (RuntimeCall.request call) before
   ... | inj₁ unknown =
-    ⊥-elim (rejected≢accepted (trans (sym unknown) (committed-dispatch transition)))
+    ⊥-elim (rejected≢accepted (trans (sym unknown) (committed-dispatch committed)))
   ... | inj₂ (e , found , via) = e , runtime-entrypoint call found , dispatched found
     (checked-execute e (executionContext address env) (arguments (RuntimeCall.request call)) before
-      (runtime-entrypoint call found) (trans (sym via) (committed-dispatch transition)))
+      (runtime-entrypoint call found) (trans (sym via) (committed-dispatch committed)))
 
 ------------------------------------------------------------------------
 -- Source paths: evaluator evidence and the requests the before state yields
@@ -416,7 +417,7 @@ accepted-call : ∀ env (call : RuntimeCall) {before answer effects after} →
     (Account.committed answer effects) after →
   Σ (List SignedRequest) λ requests → AcceptedCall env call before answer after effects requests ×
     signedRequests before env call ≡ requests
-accepted-call env call {before} transition with accepted-dispatch env call transition
+accepted-call env call {before} committed with accepted-dispatch env call committed
 ... | construct , () , _
 ... | activation c , _ , d = activation-call env call c d
 ... | device c op , _ , d = device-call env call c op d
@@ -440,11 +441,11 @@ accepted-call-provenance : ∀ {before knowledge after env call answer effects}
     (Account.committed answer effects) after →
   Σ (List SignedRequest) λ requests → AcceptedCall env call before answer after effects requests ×
     All (λ request → Provenance h (uncurry′ Symbolic.token request)) requests
-accepted-call-provenance {env = env} {call} h available transition
-  with accepted-call env call transition
-... | requests , accepted , signed = requests , accepted , All.map⁻
+accepted-call-provenance {env = env} {call} h available committed
+  with accepted-call env call committed
+... | requests , classified , signed = requests , classified , All.map⁻
   (subst (λ rs → All (Provenance h) (map (uncurry′ Symbolic.token) rs)) signed
-    (JointFacts.required-provenance h available))
+    (JointFacts.required-provenance {environment = env} {call = call} h available))
 
 ------------------------------------------------------------------------
 -- Request-level provenance under the trace-scoped agreement premise
@@ -484,9 +485,9 @@ accepted-call-requests : ∀ {X : Set} (view : Binding.Request → X)
   Σ (List SignedRequest) λ requests → AcceptedCall env call before answer after effects requests ×
     All (RequestProvenance view h) requests
 accepted-call-requests view {knowledge = knowledge} {env = env} {call} h available agreed
-  transition with accepted-call env call transition
-... | requests , accepted , signed = requests , accepted ,
-  requests-provenance view h (accepted-encodings accepted)
+  committed with accepted-call env call committed
+... | requests , classified , signed = requests , classified ,
+  requests-provenance view h (accepted-encodings classified)
     (subst (All (AgreesIn view h)) signed agreed)
     (All.map⁻ (subst (λ rs → All (Signatures.Available knowledge)
       (map (uncurry′ Symbolic.token) rs)) signed available))
@@ -635,6 +636,7 @@ pending-origin (Runs.rooted env d (Account.committed v effects) initial deployed
 ... | inj₁ origin = origin
 ... | inj₂ (_ , flaggedInitially) = ⊥-elim (cleared-flag
   (RecoveryFacts.pending-effect construct (executionContext address env) (constructorArguments d)
+    {s = state []} {v = v} {t = initial} {es = effects}
     (deployment-executes (executionContext address env) d deployed))
   flaggedInitially)
 pending-origin (Runs.rooted env d (Account.reverted e) initial () trace) cell flagged
@@ -666,8 +668,8 @@ finalisation-enacts-occurrence : ∀ env (call : RuntimeCall) {before answer eff
   Account.Transition P (executionContext address env) (RuntimeCall.request call) before
     (Account.committed answer effects) after →
   EnactsOccurrence (executionContext address env) (Runs.History.execution h) after
-finalisation-enacts-occurrence env call h finalising transition
-  with accepted-dispatch env call transition
+finalisation-enacts-occurrence env call h finalising committed
+  with accepted-dispatch env call committed
 ... | e , _ , dispatched found executed with trans (sym found) finalising
 ...   | refl = enacts (pending-origin h F.pending F.isPending) finalisation
   where
