@@ -24,14 +24,14 @@ open import Data.Sum.Base using (_⊎_; inj₁; inj₂)
 import Data.List.Relation.Unary.Any as Any
 open import Data.List.Base using (_++_)
 open import Data.Bool.Base using (not; _∨_)
-open import Data.Maybe.Base using (just)
+open import Data.Maybe.Base using (just; nothing)
 open import Data.Nat.Base using (ℕ; suc; _≤_; _<_; z≤n; s≤s)
 open import Data.Nat.Properties using (≤-refl; ≤-trans; n≤1+n; <-≤-trans)
 open import Data.Product.Base using (Σ; _×_; _,_; proj₁; proj₂)
 open import Data.String.Base using (String)
 open import Data.Unit.Base using (⊤; tt)
 open import Relation.Binary.Construct.Closure.ReflexiveTransitive using (ε; _◅_)
-open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl; sym; trans; cong; subst)
+open import Relation.Binary.PropositionalEquality using (_≡_; _≢_; refl; sym; trans; cong; subst; subst₂)
 import Conformance.FullAccountDeviceSecurityProof as DeviceProof
 import Conformance.FullAccountGrantSecurityProof as GrantProof
 import Conformance.FullAccountRecoverySecurity as Recovery
@@ -53,6 +53,35 @@ module EP = GrantEffectsProof P
 open S using (AcceptedCall; activated; deviceAuthorised; grantAuthorised;
   depositedUnshielded; depositedShielded; recoverySubmitted; recoveryFinalised)
 
+-- Proof-only certificates. Advertised statements take the committed occurrence
+-- and neutral dispatcher resolution; constructors below extract these guards.
+record RecoveryBoundary (s recovered : State) : Set where
+  field history : Runs.History s
+        event : CommittedOccurrence s recovered
+        finaliseResolved : Resolved event Runtime.finaliseRecovery
+        evidence : R.Finalisation.Evidence (occurrenceContext event) s recovered
+
+record DeviceBoundary (c : Curve) (op : Operation) (s after : State) : Set where
+  field history : Runs.History s
+        event : CommittedOccurrence s after
+        deviceResolved : Resolved event (Runtime.device c op)
+        evidence : DeviceCall c op (occurrenceContext event) (occurrenceArguments event)
+          s (CommittedOccurrence.answer event) after
+
+revokedIdentifier : ∀ {c s t} → DeviceBoundary c revokeGrant s t → Value
+revokedIdentifier boundary = revocationIdentifier (DeviceBoundary.event boundary)
+
+-- The installed issue result connects the history occurrence to the actual
+-- grant record; it is extracted by issue-boundary, not assumed by a headline.
+record IssueBoundary (c : Curve) (s t : State) : Set where
+  field device : DeviceBoundary c issueGrant s t
+        issued : GE.IssueResult (deviceArguments issueGrant (occurrenceArguments (DeviceBoundary.event device)))
+          (DeviceCall.authorisedState (DeviceBoundary.evidence device)) t
+
+issueIdentity : ∀ {c s t} → IssueBoundary c s t → GE.Issuance
+issueIdentity boundary = GE.issuanceOf (issuedIdentifier (DeviceBoundary.event (IssueBoundary.device boundary)))
+  (GE.issuedRecord (IssueBoundary.issued boundary))
+
 enrolledSeeds : Operation → List Value → List Value
 enrolledSeeds addDevice xs = get 0 xs ∷ []
 enrolledSeeds _ xs = []
@@ -64,7 +93,7 @@ introducedEntries : ∀ {env call s x t es requests} →
   AcceptedCall env call s x t es requests → List Value
 introducedEntries (activated c _ E) = Activation.initial E ∷ []
 introducedEntries {call = call} (deviceAuthorised c op _ E _ _) =
-  deviceSeeds op (deviceArguments op (arguments (RuntimeCall.request call))) (DeviceCall.rolledEntry E)
+  deviceSeeds op (deviceArguments op (callArguments call)) (DeviceCall.rolledEntry E)
 introducedEntries (grantAuthorised _ _ _ _ _ _ _) = []
 introducedEntries (depositedUnshielded _) = []
 introducedEntries (depositedShielded _) = []
@@ -235,21 +264,21 @@ accepted-counters env call {s} {t = t} (activated c dispatchWitness E) = record
   ; epoch = frame-≤ "device_epoch" {s = s} {t = t} (Activation.unchanged E "device_epoch" refl refl refl refl refl)
   ; generation = frame-≤ "grant_generation" {s = s} {t = t} (Activation.unchanged E "grant_generation" refl refl refl refl refl) }
 accepted-counters env call {s} {t = t} (deviceAuthorised c op dispatchWitness E checked encoded) =
-  device-counters c op (executionContext address env) (arguments (RuntimeCall.request call)) E
+  device-counters c op (executionContext address env) (callArguments call) E
 accepted-counters env call {s} {t = t} (grantAuthorised c op dispatchWitness w E checked encoded) = record
-  { nonce = frame-≤ "auth_nonce" {s = s} {t = t} (execute-grant-frame "auth_nonce" c op (executionContext address env) (arguments (RuntimeCall.request call)) w refl refl refl refl refl r)
-  ; epoch = frame-≤ "device_epoch" {s = s} {t = t} (execute-grant-frame "device_epoch" c op (executionContext address env) (arguments (RuntimeCall.request call)) w refl refl refl refl refl r)
-  ; generation = frame-≤ "grant_generation" {s = s} {t = t} (execute-grant-frame "grant_generation" c op (executionContext address env) (arguments (RuntimeCall.request call)) w refl refl refl refl refl r) }
+  { nonce = frame-≤ "auth_nonce" {s = s} {t = t} (execute-grant-frame "auth_nonce" c op (executionContext address env) (callArguments call) w refl refl refl refl refl r)
+  ; epoch = frame-≤ "device_epoch" {s = s} {t = t} (execute-grant-frame "device_epoch" c op (executionContext address env) (callArguments call) w refl refl refl refl refl r)
+  ; generation = frame-≤ "grant_generation" {s = s} {t = t} (execute-grant-frame "grant_generation" c op (executionContext address env) (callArguments call) w refl refl refl refl refl r) }
   where r = run _ (S.Dispatched.executed dispatchWitness)
 accepted-counters env call {s} {t = t} (depositedUnshielded dispatchWitness) = record
-  { nonce = frame-≤ "auth_nonce" {s = s} {t = t} (public-frame "auth_nonce" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl {s = s} {t = t} r)
-  ; epoch = frame-≤ "device_epoch" {s = s} {t = t} (public-frame "device_epoch" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl {s = s} {t = t} r)
-  ; generation = frame-≤ "grant_generation" {s = s} {t = t} (public-frame "grant_generation" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl {s = s} {t = t} r) }
+  { nonce = frame-≤ "auth_nonce" {s = s} {t = t} (public-frame "auth_nonce" (executionContext address env) (callArguments call) refl refl {s = s} {t = t} r)
+  ; epoch = frame-≤ "device_epoch" {s = s} {t = t} (public-frame "device_epoch" (executionContext address env) (callArguments call) refl refl {s = s} {t = t} r)
+  ; generation = frame-≤ "grant_generation" {s = s} {t = t} (public-frame "grant_generation" (executionContext address env) (callArguments call) refl refl {s = s} {t = t} r) }
   where r = run _ (S.Dispatched.executed dispatchWitness)
 accepted-counters env call {s} {t = t} (depositedShielded dispatchWitness) = record
-  { nonce = frame-≤ "auth_nonce" {s = s} {t = t} (private-frame "auth_nonce" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl refl r)
-  ; epoch = frame-≤ "device_epoch" {s = s} {t = t} (private-frame "device_epoch" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl refl r)
-  ; generation = frame-≤ "grant_generation" {s = s} {t = t} (private-frame "grant_generation" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl refl r) }
+  { nonce = frame-≤ "auth_nonce" {s = s} {t = t} (private-frame "auth_nonce" (executionContext address env) (callArguments call) refl refl refl r)
+  ; epoch = frame-≤ "device_epoch" {s = s} {t = t} (private-frame "device_epoch" (executionContext address env) (callArguments call) refl refl refl r)
+  ; generation = frame-≤ "grant_generation" {s = s} {t = t} (private-frame "grant_generation" (executionContext address env) (callArguments call) refl refl refl r) }
   where r = run _ (S.Dispatched.executed dispatchWitness)
 accepted-counters env call {s} {t = t} (recoverySubmitted dispatchWitness E recoverySig successorSig encoded) = record
   { nonce = frame-≤ "auth_nonce" {s = s} {t = t} (R.Frames.unwritten (R.Submission.Evidence.frame E) "auth_nonce"
@@ -468,12 +497,12 @@ accepted-device-origin env call {s} {t = t} {entry = entry} (activated c dispatc
 accepted-device-origin env call {s} {t = t} (deviceAuthorised c op dispatchWitness E checked encoded) =
   device-origin c op _ _ E
 accepted-device-origin env call {s} {t = t} (grantAuthorised c op dispatchWitness w E checked encoded) live =
-  inj₁ (devices-frame {s = s} {t = t} (execute-grant-frame "devices" c op (executionContext address env) (arguments (RuntimeCall.request call)) w refl refl refl refl refl
+  inj₁ (devices-frame {s = s} {t = t} (execute-grant-frame "devices" c op (executionContext address env) (callArguments call) w refl refl refl refl refl
     (run _ (S.Dispatched.executed dispatchWitness))) live)
 accepted-device-origin env call {s} {t = t} (depositedUnshielded dispatchWitness) live =
-  inj₁ (devices-frame {s = s} {t = t} (public-frame "devices" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))) live)
+  inj₁ (devices-frame {s = s} {t = t} (public-frame "devices" (executionContext address env) (callArguments call) refl refl {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))) live)
 accepted-device-origin env call {s} {t = t} (depositedShielded dispatchWitness) live =
-  inj₁ (devices-frame {s = s} {t = t} (private-frame "devices" (executionContext address env) (arguments (RuntimeCall.request call)) refl refl refl (run _ (S.Dispatched.executed dispatchWitness))) live)
+  inj₁ (devices-frame {s = s} {t = t} (private-frame "devices" (executionContext address env) (callArguments call) refl refl refl (run _ (S.Dispatched.executed dispatchWitness))) live)
 accepted-device-origin env call {s} {t = t} (recoverySubmitted dispatchWitness E recoverySig successorSig encoded) live =
   inj₁ (devices-frame {s = s} {t = t} (R.Frames.unwritten (R.Submission.Evidence.frame E) "devices"
     (not-listed (refl ∷ refl ∷ refl ∷ refl ∷ refl ∷ []))) live)
@@ -511,17 +540,17 @@ introduction-sound : ∀ {env call s x t es requests entry}
 introduction-sound {call = call} {s = s} {entry = entry} (activated c dispatchWitness E) introduced
   with member-witness entry (Activation.initial E ∷ []) introduced
 ... | Any.here refl = bootstrapped c (S.Dispatched.resolved dispatchWitness)
-  (entry-reindex {s = s} {c = c} {a = Semantics.parseActivation c (arguments (RuntimeCall.request call))}
+  (entry-reindex {s = s} {c = c} {a = Semantics.parseActivation c (callArguments call)}
     {count = 0} (Activation.epochCell E) (Activation.initialEntry E))
 ... | Any.there ()
 introduction-sound {call = call} {s = s} {entry = entry} (deviceAuthorised c op dispatchWitness E checked encoded) introduced
-  with member-witness entry (deviceSeeds op (deviceArguments op (arguments (RuntimeCall.request call)))
+  with member-witness entry (deviceSeeds op (deviceArguments op (callArguments call))
     (DeviceCall.rolledEntry E)) introduced
 ... | Any.here refl = rolled c op (S.Dispatched.resolved dispatchWitness)
-  (entry-reindex {s = s} {c = c} {a = deviceAuth c op (arguments (RuntimeCall.request call))}
-    {count = suc (counter (deviceAuth c op (arguments (RuntimeCall.request call))))}
+  (entry-reindex {s = s} {c = c} {a = deviceAuth c op (callArguments call)}
+    {count = suc (counter (deviceAuth c op (callArguments call)))}
     (Authorisation.epochCell (DeviceCall.authorised E)) (Authorisation.nextEntry (DeviceCall.authorised E)))
-... | Any.there p with enrolled-origin op (deviceArguments op (arguments (RuntimeCall.request call))) p
+... | Any.there p with enrolled-origin op (deviceArguments op (callArguments call)) p
 ... | same , refl = enrolled c (S.Dispatched.resolved dispatchWitness) (sym same)
 introduction-sound (grantAuthorised _ _ _ _ _ _ _) ()
 introduction-sound (depositedUnshielded _) ()
@@ -613,7 +642,7 @@ runtime-protected-device-excluded : ∀ {s recovered later c op after} →
   (recovery : RecoveryBoundary s recovered) → (trace : Runs.Trace recovered later) →
   (device : DeviceBoundary c op later after) →
   RelevantEntrySeparation c
-    (deviceAuth c op (arguments (RuntimeCall.request (CommittedOccurrence.call (DeviceBoundary.event device)))))
+    (deviceAuth c op (occurrenceArguments (DeviceBoundary.event device)))
     (counterValue "device_epoch" later)
     (R.Finalisation.Evidence.successor (RecoveryBoundary.evidence recovery)) trace → ⊥
 runtime-protected-device-excluded recovery trace device separation =
@@ -640,8 +669,8 @@ post-revoke-all-generation {s = s} {t = t} boundary trace = <-≤-trans strict
   where
   E = DeviceBoundary.evidence boundary
   boundaryEvent = DeviceBoundary.event boundary
-  ctx = executionContext address (CommittedOccurrence.environment boundaryEvent)
-  xs = arguments (RuntimeCall.request (CommittedOccurrence.call boundaryEvent))
+  ctx = occurrenceContext boundaryEvent
+  xs = occurrenceArguments boundaryEvent
   strict : counterValue "grant_generation" s < counterValue "grant_generation" t
   strict = subst (λ n → n < counterValue "grant_generation" t)
     (frame-number "grant_generation" {s = s} {t = DeviceCall.authorisedState E}
@@ -770,10 +799,10 @@ accepted-grant-effect : ∀ env call {s x t es requests} →
   AcceptedCall env call s x t es requests → GE.GrantEffect s t
 accepted-grant-effect env call {s} {t = t} (activated c dispatchWitness E) =
   EP.execute-effect (GE.activationEntry c) (executionContext address env)
-    (arguments (RuntimeCall.request call)) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
+    (callArguments call) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
 accepted-grant-effect env call {s} {t = t} (deviceAuthorised c op dispatchWitness E checked encoded) =
   EP.body-effect op (executionContext address env)
-    (deviceArguments op (arguments (RuntimeCall.request call)))
+    (deviceArguments op (callArguments call))
     (deviceCoin op (executionContext address env)) (DeviceCall.callerEntry E)
     {before = s} {source = DeviceCall.authorisedState E} {after = t}
     (EP.cell-frame "grants" s (DeviceCall.authorisedState E)
@@ -781,13 +810,13 @@ accepted-grant-effect env call {s} {t = t} (deviceAuthorised c op dispatchWitnes
     (DeviceCall.bodyRun E)
 accepted-grant-effect env call {s} {t = t} (grantAuthorised c op dispatchWitness w E checked encoded) =
   EP.execute-effect (GE.grantEntry c op w) (executionContext address env)
-    (arguments (RuntimeCall.request call)) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
+    (callArguments call) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
 accepted-grant-effect env call {s} {t = t} (depositedUnshielded dispatchWitness) =
   EP.execute-effect GE.publicDepositEntry (executionContext address env)
-    (arguments (RuntimeCall.request call)) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
+    (callArguments call) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
 accepted-grant-effect env call {s} {t = t} (depositedShielded dispatchWitness) =
   EP.execute-effect GE.privateDepositEntry (executionContext address env)
-    (arguments (RuntimeCall.request call)) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
+    (callArguments call) {s = s} {t = t} (run _ (S.Dispatched.executed dispatchWitness))
 accepted-grant-effect env call {s} {t = t} (recoverySubmitted dispatchWitness E recoverySig successorSig encoded) =
   GE.kept (EP.cell-frame "grants" s t (R.Frames.unwritten (R.Submission.Evidence.frame E) "grants"
     (not-listed (refl ∷ refl ∷ refl ∷ refl ∷ refl ∷ []))))
@@ -817,9 +846,9 @@ accepted-disabled env call (deviceAuthorised c addDevice dispatchWitness E check
 accepted-disabled env call (deviceAuthorised c removeDevice dispatchWitness E checked encoded) disabled =
   inj₁ (effect-preserves-disabled (accepted-grant-effect env call (deviceAuthorised c removeDevice dispatchWitness E checked encoded)) tt disabled)
 accepted-disabled env call {target = target} (deviceAuthorised c issueGrant dispatchWitness E checked encoded) disabled
-  with equal target (IssueArguments.id (deviceArguments issueGrant (arguments (RuntimeCall.request call)))) in same
-... | true = inj₂ (issuedHere dispatchWitness
-  (sym (G.equal-sound target (IssueArguments.id (deviceArguments issueGrant (arguments (RuntimeCall.request call)))) same)))
+  with equal target (IssueArguments.id (deviceArguments issueGrant (callArguments call))) in same
+... | true = inj₂ (issuedHere (S.Dispatched.resolved dispatchWitness)
+  (sym (G.equal-sound target (IssueArguments.id (deviceArguments issueGrant (callArguments call))) same)))
 ... | false = inj₁ (effect-preserves-disabled
   (accepted-grant-effect env call (deviceAuthorised c issueGrant dispatchWitness E checked encoded))
   (false-equal-different same) disabled)
@@ -869,7 +898,7 @@ disabled-until-reissue (Runs.event env call (Account.committed x es) executed �
 revocation-disables : ∀ {c s t} (boundary : DeviceBoundary c revokeGrant s t) →
   GrantDisabled
     (get 0 (deviceArguments revokeGrant
-      (arguments (RuntimeCall.request (CommittedOccurrence.call (DeviceBoundary.event boundary)))))) t
+      (occurrenceArguments (DeviceBoundary.event boundary)))) t
 revocation-disables {t = t} boundary =
   disabled-inactive-insert {id = get 0 (deviceArguments revokeGrant xs)}
     {updated = GE.revokedRecord (GE.RevokeResult.old result)}
@@ -878,19 +907,19 @@ revocation-disables {t = t} boundary =
   where
   E = DeviceBoundary.evidence boundary
   boundaryEvent = DeviceBoundary.event boundary
-  ctx = executionContext address (CommittedOccurrence.environment boundaryEvent)
-  xs = arguments (RuntimeCall.request (CommittedOccurrence.call boundaryEvent))
+  ctx = occurrenceContext boundaryEvent
+  xs = occurrenceArguments boundaryEvent
   result = EP.revoke-body-result ctx (deviceArguments revokeGrant xs)
     (deviceCoin revokeGrant ctx) (DeviceCall.callerEntry E) (DeviceCall.bodyRun E)
 
 revoked-grant-reactivation-origin : ∀ {c s revoked later g}
   (boundary : DeviceBoundary c revokeGrant s revoked) (trace : Runs.Trace revoked later) →
   lookupMap (get 0 (deviceArguments revokeGrant
-    (arguments (RuntimeCall.request (CommittedOccurrence.call (DeviceBoundary.event boundary))))))
+    (occurrenceArguments (DeviceBoundary.event boundary))))
     (fields (cell "grants" later)) ≡ just g →
   grantActive g ≡ bool true →
   ReissuedIn (get 0 (deviceArguments revokeGrant
-    (arguments (RuntimeCall.request (CommittedOccurrence.call (DeviceBoundary.event boundary)))))) trace
+    (occurrenceArguments (DeviceBoundary.event boundary)))) trace
 revoked-grant-reactivation-origin boundary trace found active
   with disabled-until-reissue trace (revocation-disables boundary)
 ... | inj₁ disabled = ⊥-elim (disabled _ found active)
@@ -935,8 +964,8 @@ issue-boundary device = record
   where
   E = DeviceBoundary.evidence device
   boundaryEvent = DeviceBoundary.event device
-  ctx = executionContext address (CommittedOccurrence.environment boundaryEvent)
-  xs = arguments (RuntimeCall.request (CommittedOccurrence.call boundaryEvent))
+  ctx = occurrenceContext boundaryEvent
+  xs = occurrenceArguments boundaryEvent
 
 issued-at-number : ∀ {c s t} (boundary : IssueBoundary c s t) →
   number (GE.Issuance.issuedAt (issueIdentity boundary)) ≡ counterValue "auth_nonce" t
@@ -949,8 +978,8 @@ issued-at-number {t = t} boundary = trans
   where
   E = DeviceBoundary.evidence (IssueBoundary.device boundary)
   boundaryEvent = DeviceBoundary.event (IssueBoundary.device boundary)
-  ctx = executionContext address (CommittedOccurrence.environment boundaryEvent)
-  xs = arguments (RuntimeCall.request (CommittedOccurrence.call boundaryEvent))
+  ctx = occurrenceContext boundaryEvent
+  xs = occurrenceArguments boundaryEvent
 
 issue-nonces-strict : ∀ {c₁ c₂ s first later final} →
   (issued₁ : IssueBoundary c₁ s first) → Runs.Trace first later →
@@ -964,7 +993,7 @@ issue-nonces-strict issued₁ trace issued₂ rewrite issued-at-number issued₁
 accepted-device-evidence : ∀ {env call s x t es requests c op} →
   AcceptedCall env call s x t es requests →
   S.resolve (RuntimeCall.request call) ≡ just (Semantics.device c op) →
-  DeviceCall c op (executionContext address env) (arguments (RuntimeCall.request call)) s x t
+  DeviceCall c op (executionContext address env) (callArguments call) s x t
 accepted-device-evidence (activated _ dispatchWitness _) resolved
   with trans (sym (S.Dispatched.resolved dispatchWitness)) resolved
 ... | ()
@@ -1019,3 +1048,126 @@ post-revoke-all-old-grant-excluded : ∀ {ownerCurve s revoked later c ctx ga g}
 post-revoke-all-old-grant-excluded boundary trace old live =
   stale-generation-excluded trace
     (≤-trans (s≤s old) (post-revoke-all-generation boundary ε)) live
+
+-- Occurrence-facing proofs ---------------------------------------------------
+-- Certificates above remain strong supporting results, but their source guard
+-- fields are derived here rather than imposed on the advertised statements.
+
+history-after : ∀ {s t later} → Runs.History s → CommittedOccurrence s t →
+  Runs.Trace t later → Runs.History later
+history-after history event trace = Runs.extend history
+  (Runs.event (CommittedOccurrence.environment event) (CommittedOccurrence.call event)
+    (Account.committed (CommittedOccurrence.answer event) (CommittedOccurrence.effects event))
+    (CommittedOccurrence.executed event) ◅ trace)
+
+boundary-successor : ∀ {s recovered} (boundary : RecoveryBoundary s recovered) →
+  recoverySuccessor (RecoveryBoundary.event boundary) ≡
+    R.Finalisation.Evidence.successor (RecoveryBoundary.evidence boundary)
+boundary-successor {s} boundary = D.cell-lookup "pending_entry" s
+  (R.Stores.observed (R.Finalisation.Evidence.successorCell (RecoveryBoundary.evidence boundary)))
+
+observed-grant-found : ∀ identifier s {g} →
+  lookupMap identifier (fields (cell "grants" s)) ≡ just g → observedGrant identifier s ≡ g
+observed-grant-found identifier s found with lookupMap identifier (fields (cell "grants" s)) | found
+... | just g | refl = refl
+... | nothing | ()
+
+occurrence-issue-identity : ∀ {c s t} (boundary : IssueBoundary c s t) →
+  issuedIdentity (DeviceBoundary.event (IssueBoundary.device boundary)) ≡ issueIdentity boundary
+occurrence-issue-identity {t = t} boundary = cong (GE.issuanceOf issueId)
+  (observed-grant-found issueId t
+    (trans (cong (λ v → lookupMap issueId (fields v)) (GE.IssueResult.installed issued))
+      (map-insert-same issueId (GE.issuedRecord issued) (fields (cell "grants" source)))))
+  where
+  device = IssueBoundary.device boundary
+  issueId = issuedIdentifier (DeviceBoundary.event device)
+  source = DeviceCall.authorisedState (DeviceBoundary.evidence device)
+  issued = IssueBoundary.issued boundary
+
+occurrence-post-recovery-epoch : ∀ {s recovered later} → Runs.History s →
+  (event : CommittedOccurrence s recovered) → Resolved event Runtime.finaliseRecovery →
+  Runs.Trace recovered later → counterValue "device_epoch" s < counterValue "device_epoch" later
+occurrence-post-recovery-epoch history event resolved =
+  runtime-post-recovery-epoch (recovery-boundary history event resolved)
+
+occurrence-post-device-nonce : ∀ {c op s t later} → Runs.History s →
+  (event : CommittedOccurrence s t) → Resolved event (Runtime.device c op) →
+  Runs.Trace t later → counterValue "auth_nonce" s < counterValue "auth_nonce" later
+occurrence-post-device-nonce history event resolved =
+  runtime-post-device-nonce (device-boundary history event resolved)
+
+occurrence-post-revoke-all-generation : ∀ {c s t later} → Runs.History s →
+  (event : CommittedOccurrence s t) → Resolved event (Runtime.device c revokeAllGrants) →
+  Runs.Trace t later → counterValue "grant_generation" s < counterValue "grant_generation" later
+occurrence-post-revoke-all-generation history event resolved =
+  post-revoke-all-generation (device-boundary history event resolved)
+
+occurrence-post-recovery-device-origin : ∀ {s recovered later entry} → Runs.History s →
+  (event : CommittedOccurrence s recovered) → Resolved event Runtime.finaliseRecovery →
+  (trace : Runs.Trace recovered later) → member entry (fields (cell "devices" later)) ≡ true →
+  (entry ≡ recoverySuccessor event) ⊎ IntroducedIn entry trace
+occurrence-post-recovery-device-origin history event resolved trace live
+  with runtime-post-recovery-device-origin (recovery-boundary history event resolved) trace live
+... | inj₁ same = inj₁ (trans same (sym (boundary-successor (recovery-boundary history event resolved))))
+... | inj₂ introduced = inj₂ introduced
+
+occurrence-protected-device-excluded : ∀ {s recovered later c op after} → Runs.History s →
+  (recovery : CommittedOccurrence s recovered) → Resolved recovery Runtime.finaliseRecovery →
+  (trace : Runs.Trace recovered later) →
+  (device : CommittedOccurrence later after) → Resolved device (Runtime.device c op) →
+  RelevantEntrySeparation c (occurrenceAuth c op device) (counterValue "device_epoch" later)
+    (recoverySuccessor recovery) trace → ⊥
+occurrence-protected-device-excluded {later = later} {c} {op} history recovery resolved trace device deviceResolved separation =
+  runtime-protected-device-excluded recoveryEvidence trace deviceEvidence
+    (subst (λ successor → RelevantEntrySeparation c (occurrenceAuth c op device)
+      (counterValue "device_epoch" later) successor trace)
+      (boundary-successor recoveryEvidence) separation)
+  where
+  recoveryEvidence = recovery-boundary history recovery resolved
+  deviceEvidence = device-boundary (history-after history recovery trace) device deviceResolved
+
+occurrence-revoked-grant-excluded : ∀ {c s revoked later} → Runs.History s →
+  (event : CommittedOccurrence s revoked) → Resolved event (Runtime.device c revokeGrant) →
+  (trace : Runs.Trace revoked later) → (ReissuedIn (revocationIdentifier event) trace → ⊥) →
+  GrantDisabled (revocationIdentifier event) later
+occurrence-revoked-grant-excluded history event resolved =
+  revoked-grant-excluded (device-boundary history event resolved)
+
+occurrence-revoked-grant-call-excluded : ∀ {ownerCurve s revoked later c op ctx ga xs x after} →
+  Runs.History s → (event : CommittedOccurrence s revoked) →
+  Resolved event (Runtime.device ownerCurve revokeGrant) → (trace : Runs.Trace revoked later) →
+  (ReissuedIn (revocationIdentifier event) trace → ⊥) →
+  Run (grantId c ctx ga) later (revocationIdentifier event) later →
+  Run (grantCall c op ctx ga xs) later x after → ⊥
+occurrence-revoked-grant-call-excluded {c = c} {op} {ctx} {ga} {xs} history event resolved =
+  revoked-grant-call-excluded {c = c} {op = op} {ctx = ctx} {ga = ga} {xs = xs}
+    (device-boundary history event resolved)
+
+occurrence-issue-nonces-strict : ∀ {c₁ c₂ s first later final} → Runs.History s →
+  (issued₁ : CommittedOccurrence s first) → Resolved issued₁ (Runtime.device c₁ issueGrant) →
+  Runs.Trace first later →
+  (issued₂ : CommittedOccurrence later final) → Resolved issued₂ (Runtime.device c₂ issueGrant) →
+  number (GE.Issuance.issuedAt (issuedIdentity issued₁)) <
+    number (GE.Issuance.issuedAt (issuedIdentity issued₂))
+occurrence-issue-nonces-strict history issued₁ resolved₁ trace issued₂ resolved₂ =
+  subst₂ (λ first second → number (GE.Issuance.issuedAt first) < number (GE.Issuance.issuedAt second))
+    (sym (occurrence-issue-identity firstIssue)) (sym (occurrence-issue-identity secondIssue))
+    (issue-nonces-strict firstIssue trace secondIssue)
+  where
+  firstIssue = issue-boundary (device-boundary history issued₁ resolved₁)
+  secondIssue = issue-boundary
+    (device-boundary (history-after history issued₁ trace) issued₂ resolved₂)
+
+occurrence-post-recovery-old-grant-excluded : ∀ {s recovered later c ctx ga g} →
+  Runs.History s → (event : CommittedOccurrence s recovered) → Resolved event Runtime.finaliseRecovery →
+  Runs.Trace recovered later → number (grantEpoch g) ≤ counterValue "device_epoch" s →
+  LiveGrant c ctx ga later g → ⊥
+occurrence-post-recovery-old-grant-excluded history event resolved =
+  post-recovery-old-grant-excluded (recovery-boundary history event resolved)
+
+occurrence-post-revoke-all-old-grant-excluded : ∀ {ownerCurve s revoked later c ctx ga g} →
+  Runs.History s → (event : CommittedOccurrence s revoked) →
+  Resolved event (Runtime.device ownerCurve revokeAllGrants) → Runs.Trace revoked later →
+  number (grantGeneration g) ≤ counterValue "grant_generation" s → LiveGrant c ctx ga later g → ⊥
+occurrence-post-revoke-all-old-grant-excluded history event resolved =
+  post-revoke-all-old-grant-excluded (device-boundary history event resolved)
