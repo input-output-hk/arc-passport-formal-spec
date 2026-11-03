@@ -19,7 +19,9 @@ import Conformance.FullAccountSignatureBinding as SignatureBinding
 -- signatures require nothing, so their refusals remain steps. Activation,
 -- deposits and finalisation verify no signature. The guard evidence in
 -- AcceptedCall holds for every primitive backend P. Local source execution,
--- not ledger admission or adoption. Statements: Passport.AccountSecurityProperties.
+-- not ledger admission or adoption. Focused statements:
+-- AccountRequestDispatchProperties, AccountSecurityProperties and
+-- AccountRecoveryOccurrenceProperties.
 module Passport.AccountSecurity (P : Primitives) (address : Value)
   (ownership : SignatureBinding.Key P → Ownership) where
 
@@ -48,6 +50,9 @@ import Midnight.ContractDSL.Lifecycle as Generic
 import Midnight.ContractDSL.SymbolicSigning as Signing
 import Passport.Account as Account
 open import Passport.AccountLifecycle P
+open import Passport.AccountRecoveryOccurrence P address using
+  (Ordinary; ordinaryActivation; ordinaryDevice; ordinaryGrant; ordinaryUnshieldedDeposit;
+   ordinaryShieldedDeposit; Retains; refused; ordinary; Retained; done; kept)
 
 module Semantics = Model.AccountSemantics P
 open Semantics using (Entrypoint; construct; activation; device; grant; depositPublic;
@@ -62,6 +67,8 @@ module Runs = Generic.Runs lifecycle address
 ------------------------------------------------------------------------
 -- Dispatch: the entrypoint the dispatcher's name table resolves
 
+-- The same name-table resolution is used by OutsiderPreservation.resolve and
+-- UnshieldedAccounting.dispatchedAction; none introduces a second dispatch policy.
 resolve : RawCall → Maybe Entrypoint
 resolve call = Semantics.lookupEntrypoint (name call) Semantics.entrypoints
 
@@ -188,6 +195,12 @@ signedRequests s env call = maybe′
 requiredTokens : State → Environment → RuntimeCall → List Token
 requiredTokens s env call = map (uncurry′ Symbolic.token) (signedRequests s env call)
 
+-- Provenance over the signing projection, independently of the source path.
+TraceProvenance : ∀ {knowledge} → Signatures.Trace Signatures.initial knowledge → Token → Set
+TraceProvenance {knowledge} trace τ =
+  Signatures.Controlled knowledge (Signatures.Token.key τ) ⊎
+  Signatures.HonestlyIssued trace τ
+
 ------------------------------------------------------------------------
 -- Joint histories of this account and symbolic signing
 
@@ -197,9 +210,7 @@ module Histories = Adversarial.Joint lifecycle address Symbolic.interface requir
 -- is attacker-controlled there, or an approved honest signing in the history's
 -- signing trace produced it (SymbolicSigning.HonestlyIssued).
 Provenance : ∀ {contract knowledge} → Histories.History (contract , knowledge) → Token → Set
-Provenance {knowledge = knowledge} h τ =
-  Signatures.Controlled knowledge (Signatures.Token.key τ) ⊎
-  Signatures.HonestlyIssued (Histories.signingHistory h) τ
+Provenance h = TraceProvenance (Histories.signingHistory h)
 
 ------------------------------------------------------------------------
 -- Accepted runtime calls by source path
@@ -277,48 +288,33 @@ module _ (env : Environment) (call : RuntimeCall) where
 ------------------------------------------------------------------------
 -- Request-level provenance
 
+TraceAgreement : ∀ {X : Set} → (Binding.Request → X) → ∀ {knowledge} →
+  Signatures.Trace Signatures.initial knowledge → SignedRequest → Set
+TraceAgreement view trace (k , r) = ∀ d → Binding.encode k r ≡ just d →
+  Symbolic.IssuedAgreement view trace k d r
+
+TraceRequestProvenance : ∀ {X : Set} → (Binding.Request → X) → ∀ {knowledge} →
+  Signatures.Trace Signatures.initial knowledge → SignedRequest → Set
+TraceRequestProvenance view {knowledge} trace (k , r) =
+  Signatures.Controlled knowledge k ⊎
+  Σ (Signatures.HonestlyIssued trace (Symbolic.token k r))
+    λ issued → view (Signatures.HonestlyIssued.request issued) ≡ view r
+
 -- SignatureBinding's trace-scoped agreement premise, for the encoding of a
 -- signed request, in a joint history's signing trace. view selects what must
 -- agree (the identity for the whole request).
 AgreesIn : ∀ {X : Set} → (Binding.Request → X) → ∀ {contract knowledge} →
   Histories.History (contract , knowledge) → SignedRequest → Set
-AgreesIn view h (k , r) = ∀ d → Binding.encode k r ≡ just d →
-  Symbolic.IssuedAgreement view (Histories.signingHistory h) k d r
+AgreesIn view h = TraceAgreement view (Histories.signingHistory h)
 
 -- A verified request's key is attacker-controlled at the invoking joint state,
 -- or a request with the same view was approved and honestly signed with it.
 RequestProvenance : ∀ {X : Set} → (Binding.Request → X) → ∀ {contract knowledge} →
   Histories.History (contract , knowledge) → SignedRequest → Set
-RequestProvenance view {knowledge = knowledge} h (k , r) =
-  Signatures.Controlled knowledge k ⊎
-  Σ (Signatures.HonestlyIssued (Histories.signingHistory h) (Symbolic.token k r))
-    λ issued → view (Signatures.HonestlyIssued.request issued) ≡ view r
+RequestProvenance view h = TraceRequestProvenance view (Histories.signingHistory h)
 
 ------------------------------------------------------------------------
 -- Pending recovery records in account histories
-
--- Entrypoints that neither install, enact nor cancel a pending recovery.
-data Ordinary : Entrypoint → Set where
-  ordinaryActivation : ∀ c → Ordinary (activation c)
-  ordinaryDevice : ∀ c op → op ≢ cancelRecovery → Ordinary (device c op)
-  ordinaryGrant : ∀ c op → op ≢ cancelRecovery → Ordinary (grant c op)
-  ordinaryUnshieldedDeposit : Ordinary depositPublic
-  ordinaryShieldedDeposit : Ordinary depositPrivate
-
--- A history step that keeps a pending record: a refused attempt, which keeps
--- the whole state, or an accepted call of an ordinary entrypoint, which keeps
--- the pending cells.
-data Retains {s t : State} : Runs.Step s t → Set where
-  refused : ∀ {env call error executed} → t ≡ s →
-    Retains (Runs.event env call (Account.reverted error) executed)
-  ordinary : ∀ {env call answer effects executed} e →
-    resolve (RuntimeCall.request call) ≡ just e → Ordinary e → Recovery.SamePending s t →
-    Retains (Runs.event env call (Account.committed answer effects) executed)
-
-data Retained : ∀ {s t} → Runs.Trace s t → Set where
-  done : ∀ {s} → Retained {s} {s} ε
-  kept : ∀ {s m t} {x : Runs.Step s m} {rest : Runs.Trace m t} →
-    Retains x → Retained rest → Retained (x ◅ rest)
 
 -- An actual accepted recover_submit step of a trace, after which every step
 -- retains the record it installed: there is no later accepted submission,
