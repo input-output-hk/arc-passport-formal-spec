@@ -99,12 +99,123 @@ The account environment supplies time, caller and coin witness; the fixed histor
 identity supplies `Context.self`. No monotone-time, witness-honesty, signature
 security, fairness or native-admission assumption is imposed. Policies can later
 be predicates on histories, and primitive laws can be explicit theorem parameters.
-These are finite local histories. They are not ledger admission or adoption
-traces, infinite executions, leakage projections or proofs of
-[P5′](security-properties.md#p5--recovery-driven-authority-replacement) or
-[P11](security-properties.md#p11--transaction-safety); no history invariant is
-established for Passport. The existing raw evaluator remains an evaluation
-interface, not an unrestricted lifecycle relation.
+These are finite local histories, not ledger admission/adoption traces, infinite
+executions or leakage projections. The [authorization layer below](#contract-level-authorization-evidence)
+adds account-specific predicates and statements. The existing raw evaluator remains
+an evaluation interface, not an unrestricted lifecycle relation.
+
+### Symbolic signing and adversarial histories
+
+[`SymbolicSigning`](../src/Midnight/ContractDSL/SymbolicSigning.agda) supplies a
+generic symbolic model, independent of Passport and any particular signature
+scheme. An `Interface` supplies key, request and message types, initial ownership
+and an encoder. Each instance chooses how its request represents the target,
+operation, arguments and authorization context. The encoder is **not assumed
+injective**.
+
+The selected symbolic policy is:
+
+- Honest keys begin uncompromised; attacker-owned valid abstract keys are
+  controlled from the outset. Key ownership is not current contract authority.
+- Approval is a trusted abstract honest-party input, not an attacker action or
+  proof of human/UI consent. Honest signing requires prior approval of the exact
+  key/request pair. Approvals persist and may be used repeatedly.
+- Compromise is explicit and permanent. A controlled key may sign arbitrary
+  messages; an honest key may still perform approved signing after compromise.
+- Signature tokens represent key/message capabilities, not unique signature
+  bytes. Constructing a token value does not establish its availability.
+  All issued tokens remain available for delay, reordering and replay.
+- Recovery and successor keys use the same ownership/compromise model. Guardian
+  exchanges, malformed concrete keys, curve/subgroup security and computational
+  reductions are outside this model.
+
+[`SymbolicSigningProperties`](../src/Midnight/ContractDSL/SymbolicSigningProperties.agda)
+states checked persistence of control, approvals and signature knowledge.
+For a trace from `initial`, every available token has a currently controlled key
+or an actual honest signing event backed by prior approval. For an honest key
+still uncompromised, only the honest-issuance alternative remains. This is
+**message-level provenance**: with a colliding encoder, the approved request
+need not be the request a later call intends.
+
+A signing `Transition` records an event, its `Permitted` evidence and the state
+change given by `apply`. The optional
+[`SymbolicSigningExecution`](../src/Midnight/ContractDSL/SymbolicSigningExecution.agda)
+supplies executable decisions and `step` when key/request/message equality is
+decidable; `certify` converts successful execution into a model transition.
+The semantic model and its property statements do not depend on those decisions.
+
+[`AdversarialLifecycle`](../src/Midnight/ContractDSL/AdversarialLifecycle.agda)
+interleaves signing transitions with the original lifecycle invocations.
+`required before environment call` lists the tokens needed to construct an attempted
+call from its before-state; invocation requires their availability, leaves them
+available and retains the original outcome, including refusal. It adds no live-authority or acceptance
+test. A rooted joint history retains the original deployment witness and starts
+with empty signing knowledge. Its projections preserve the original contract
+history and an initial-rooted signing trace.
+[`AdversarialLifecycleProperties`](../src/Midnight/ContractDSL/AdversarialLifecycleProperties.agda)
+states projection compatibility with history extension and lifts message-level
+provenance to available and required tokens.
+
+[`AccountSecurity.Histories`](../src/Passport/AccountSecurity.agda) supplies the
+concrete account instance. Its `requiredTokens` uses the current ledger, actual
+source request encodings and source verification gates, rather than a caller-chosen
+token list. Each valid signature requires its key/digest token; invalid signatures
+contribute none. A refused call can still contain valid signatures and therefore
+require tokens. Activation, deposits and finalisation require no signature token.
+
+This is an **ideal signing interpretation**, not a proof that arbitrary concrete
+bytes can be produced only with the corresponding capability. The generic joint
+model alone still implies no accepted-call safety; that needs the source guard
+evidence below.
+
+### Contract-level authorization evidence
+
+The concrete reading route starts with
+[`FullAccountSignatureBinding`](../src/Conformance/FullAccountSignatureBinding.agda)
+and ends at [`AccountSecurityProperties`](../src/Passport/AccountSecurityProperties.agda).
+It separates three obligations:
+
+1. **Source execution.** Device, grant and recovery predicates describe the guards,
+   signed requests and state updates of the actual full-account evaluator.
+   Signature binding uses its challenge functions, k256 envelopes, WebAuthn hashes
+   and recovery preimage, with equality statements connecting encoding to execution.
+2. **Symbolic provenance.** Account histories require available tokens for complete
+   source hash-and-sign requests. Message provenance distinguishes attacker-controlled
+   keys from approved honest issuance. Request-level provenance additionally takes
+   `IssuedAgreement`: the selected request fields agree with relevant honest
+   issuances in this trace. It is not universal hash injectivity.
+3. **Concrete realization and adoption.** Neither is supplied by the symbolic
+   interpretation. Raw-digest ECDSA or Schnorr equation success is not an
+   unforgeability theorem. A realization must account for effective-digest
+   equivalence, including Schnorr reduction modulo the group order and ECDSA digest
+   reduction. Existing tokens remain replayable; source state guards, not token
+   consumption or signature-byte uniqueness, must prevent a second execution.
+
+Grant cap guards compare the presented previous spend and current amount.
+`SpentOpeningsAgree` is an explicit agreement premise for the two relevant spent
+openings, allowing those local numerical facts to be read as an accumulated total.
+It is not a proof of SHA-256 binding or, by itself, a whole-history cap invariant.
+Likewise, matching pending cells at two endpoints is not proof that a submission
+occurred in the history or remained uncancelled between them.
+
+Device membership and the boot, grant-id, object and recipient checks are
+commitment-level facts. Reading equal digests as the intended configured key,
+asset or recipient additionally requires agreement of the relevant openings.
+Those interpretations are not consequences of the numerical cap guards or of
+signature provenance alone.
+
+A compiled native authorization audit exercised **231 calls**: the existing 225
+conformance fixtures plus six represented-state cumulative-cap boundaries
+(equality and one above, for each curve). All **147 extracted signature tokens**
+matched successful native verification equations or ECDSA checks over their
+source-computed digests; complete outcomes, states and effects matched the fixtures.
+The six added cap cases are synthetic represented states, not claimed reachable
+grant histories. The audit made 3,437 primitive calls. A fresh full correspondence
+run separately covered all 53 entrypoints with 225 observations and zero mismatches.
+
+These results do not authenticate environment time, callers or coin witnesses,
+establish guardian consent, model human approval, prove fairness, or bridge local
+execution to ledger adoption. No such assumptions are silently added.
 
 ### Concrete execution comparison
 

@@ -14,8 +14,8 @@ advertised properties.
 
 Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
 full-account execution, its definitions and deployment-rooted local histories →
-local VM properties → the earlier post-bootstrap recovery contract and
-admission/authority properties.
+symbolic signing and adversarial interleavings → concrete authorization evidence → local VM properties →
+the earlier post-bootstrap recovery contract and admission/authority properties.
 
 The [pinned-main correspondence run](docs/conformance-testing-plan.md#pinned-main-full-account-execution)
 covers the constructor and all 52 impure circuits at Passport
@@ -38,6 +38,17 @@ histories with no security or environment assumption selected; the
 states what they do not establish, including
 [P5′](docs/security-properties.md#p5--recovery-driven-authority-replacement) and
 [P11](docs/security-properties.md#p11--transaction-safety).
+
+The optional [symbolic security model](docs/conformance-testing-plan.md#symbolic-signing-and-adversarial-histories)
+adds trusted abstract approvals, explicit signing, permanent key compromise and
+replayable signature knowledge.
+[`AccountSecurity`](src/Passport/AccountSecurity.agda) connects that vocabulary to
+concrete source requests and verification gates; its
+[contract-level scope](docs/conformance-testing-plan.md#contract-level-authorization-evidence)
+separates evaluator guards, conditional symbolic provenance, and the still-open
+concrete cryptographic realization and ledger-adoption correspondence. Abstract
+approval is not human consent, and these local statements are not the top-level
+security promises.
 
 [Recovery assurance](docs/conformance-recovery.md) records the concrete repair,
 corrected-model device-authority results and historical pinned gate evidence.

@@ -27,6 +27,30 @@ import Midnight.ContractDSL.Lifecycle
 import Midnight.ContractDSL.LifecycleProperties
 import Passport.AccountLifecycle
 
+-- Symbolic signing knowledge and its interleaving with contract execution.
+-- Approval is an abstract trusted input; message provenance is not a proof of
+-- request binding, live authority or Passport transaction safety.
+-- Scope: docs/conformance-testing-plan.md#symbolic-signing-and-adversarial-histories.
+import Midnight.ContractDSL.SymbolicSigning
+import Midnight.ContractDSL.SymbolicSigningProperties
+import Midnight.ContractDSL.AdversarialLifecycle
+import Midnight.ContractDSL.AdversarialLifecycleProperties
+
+-- Concrete source requests, authorization guards and their account-level
+-- composition. Ideal signing interpretation remains distinct from a native
+-- cryptographic realization or a ledger-adoption theorem. Scope:
+-- docs/conformance-testing-plan.md#contract-level-authorization-evidence.
+import Conformance.FullAccountSignatureBinding
+import Conformance.FullAccountSignatureBindingProperties
+import Conformance.FullAccountDeviceSecurity
+import Conformance.FullAccountDeviceSecurityProperties
+import Conformance.FullAccountGrantSecurity
+import Conformance.FullAccountGrantSecurityProperties
+import Conformance.FullAccountRecoverySecurity
+import Conformance.FullAccountRecoverySecurityProperties
+import Passport.AccountSecurity
+import Passport.AccountSecurityProperties
+
 -- B. Local VM properties and their statement definitions, not compiler refinement.
 -- Interpreter/DSL replay, opcode codec, then typed map/set representation.
 import Conformance.VM
@@ -73,12 +97,22 @@ import Conformance.Oracle
 import Conformance.RecoveryExecutionProof
 import Conformance.RecoveryAuthorityProof
 import Conformance.FullAccountProof
+import Conformance.FullAccountSignatureBindingProof
+import Conformance.FullAccountDeviceSecurityProof
+import Conformance.FullAccountGrantSecurityProof
+import Conformance.FullAccountRecoverySecurityProof
+import Passport.AccountSecurityProof
 import Conformance.VMProof
 import Conformance.VMEncodingProof
 import Conformance.VMAccountProof
 import Midnight.ContractDSL.LifecycleProof
+import Midnight.ContractDSL.SymbolicSigningProof
+import Midnight.ContractDSL.AdversarialLifecycleProof
 
 -- Appendix: local evaluation, journals and replay.
+-- Optional executable signing decisions and certification of model transitions.
+import Midnight.ContractDSL.SymbolicSigningExecution
+import Conformance.FullAccountExecution
 import Midnight.ContractDSL.Program
 import Midnight.ContractDSL.Ledger
 import Midnight.ContractDSL.Properties
