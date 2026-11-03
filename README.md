@@ -12,9 +12,24 @@ advertised properties.
 [Agent instructions](docs/agents/workflow.md) define the mandatory review workflow;
 [reviewer instructions](docs/agents/readability-reviewer.md) define its execution.
 
+Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
+full-account execution and its definitions → local VM properties → the earlier
+post-bootstrap recovery contract and admission/authority properties.
+
+The [pinned-main correspondence run](docs/conformance-testing-plan.md#pinned-main-full-account-execution)
+covers the constructor and all 52 impure circuits at Passport
+`fc19e471536febb2133f20e817847251622dcdf5`: bootstrap, jubjub/k256/P-256
+authentication, devices, grants, custody, inbox and recovery.
+The full-account route begins with [`Passport.Account`](src/Passport/Account.agda).
+[`FullAccountProperties`](src/Conformance/FullAccountProperties.agda) states
+structural atomicity/determinism and stale-record rejection by the executable
+grant guard. [`VMProperties`](src/Conformance/VMProperties.agda) states local
+interpreter, codec and typed map/set results. The full-surface comparison is
+not a universal compiler-refinement or on-chain proof.
+
 [Recovery assurance](docs/conformance-recovery.md) records the concrete repair,
 corrected-model device-authority results and historical pinned gate evidence.
-Start the formal reading route at [`src/Passport.agda`](src/Passport.agda):
+The recovery route follows
 [`AccountRecovery.contract`](src/Passport/AccountRecovery.agda) →
 [`Contract.Admissions`](src/Midnight/ContractDSL/Contract.agda) (instantiated as `AccountRecovery.Chain`) →
 the advertised execution and authority properties. This is the post-bootstrap

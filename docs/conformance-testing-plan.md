@@ -1,10 +1,161 @@
 # Conformance testing: plan
 
-Status: executable custody/recovery conformance with remaining work below.
-The [spike report](conformance-spike.md) records historical custody results;
-[recovery assurance](conformance-recovery.md) records the recovery attack,
-repair/gate boundary, and current limitations. Code is in `src/Conformance/`
-and `conformance/harness/`.
+Status: full-account local execution comparison against pinned Passport `main`,
+plus the earlier custody/recovery DSL and monitor work. These have distinct
+targets and proof boundaries. The [spike report](conformance-spike.md) and
+[recovery assurance](conformance-recovery.md) retain the historical evidence;
+they are not evidence about the newer target.
+
+## Pinned-main full-account execution
+
+Target: [`fc19e471536febb2133f20e817847251622dcdf5`](https://github.com/midnightntwrk/passport/tree/fc19e471536febb2133f20e817847251622dcdf5),
+the latest fetched `main` when this work began.
+[`passport-main-pins.json`](../conformance/harness/passport-main-pins.json)
+records the source, generated artefacts, loaded dependency trees and Compact
+0.35.0 identities. The runner checks the constructor plus the exact exported
+impure-circuit surface and fails on pin or surface drift.
+
+### Reading route and scope
+
+Start at [`Passport`](../src/Passport.agda), which imports both routes and their
+statement definitions explicitly.
+
+1. [`Passport.Account`](../src/Passport/Account.agda): deployment, atomic
+   transaction results and the full-state `Transition` relation.
+2. [`FullAccountTypes`](../src/Conformance/FullAccountTypes.agda): values, ledger
+   state, execution/effects, the effect monad and primitive interface.
+   [`FullAccountLayouts`](../src/Conformance/FullAccountLayouts.agda) names the
+   Compact tuple fields.
+   [`FullAccountCrypto`](../src/Conformance/FullAccountCrypto.agda) specifies
+   typed preimages and authentication checks;
+   [`FullAccountBody`](../src/Conformance/FullAccountBody.agda) and
+   [`FullAccountGrant`](../src/Conformance/FullAccountGrant.agda) contain the
+   source-ordered circuit execution.
+   [`FullAccount`](../src/Conformance/FullAccount.agda) dispatches all entrypoints,
+   validates the raw ABI and defines the 25-field ledger schema.
+3. [`FullAccountProperties`](../src/Conformance/FullAccountProperties.agda):
+   rejection atomicity and determinism by construction of the transition wrapper,
+   plus rejection of old-epoch/old-generation records by the executable
+   `validateGrantRecord` guard called by `authenticateGrant`.
+   Implementations are separate in
+   [`FullAccountProof`](../src/Conformance/FullAccountProof.agda).
+   The grant claims assume the stated ledger advance; they do not prove that every
+   successful compiled recovery or revocation performs it.
+4. [`VMProperties`](../src/Conformance/VMProperties.agda): explicit statements
+   and separate proof references for interpreter/admission soundness, codec
+   round trips and typed map/set correspondence. Their definitions are in
+   [`VM`](../src/Conformance/VM.agda),
+   [`VMEncoding`](../src/Conformance/VMEncoding.agda) and
+   [`VMAccount`](../src/Conformance/VMAccount.agda). The interpreter uses the
+   existing ledger DSL. These are local primitive results, not whole
+   generated-circuit lowering proofs.
+5. [`full-main.ts`](../conformance/harness/full-main.ts): runs the generated
+   constructor/circuits and real production witnesses independently, invokes
+   the compiled Agda account evaluator and concrete formal VM, and compares
+   their observations.
+
+The full-account evaluator describes local source execution, including immediate
+time/context reads and native asset descriptions. It is not an extension of
+the recovery slice's certified-transaction admission API: `Account.Transition`
+does not certify a delayed on-chain replay. The earlier `Program`/`Contract`
+admission theorems therefore do not automatically apply to this new relation.
+`Transition` is the graph of the `step` function; determinism follows from that
+equation. Rejection atomicity follows from `transaction` returning the original
+state. These structural results are not evidence for circuit-specific invariants
+or for the compiled implementation's transaction semantics.
+
+The harness checks complete ledger state and outputs, exact refusal classes
+and assertion messages, ordered ledger/context observations decoded from
+implementation-produced VM operations, declared assets, recipients, shielded
+commitments/nullifiers, Zswap descriptions and observed `held_coin` witnesses.
+Original native VM transcripts are replayed with their caches and gas checks;
+the separate one-op observation pass clears caches only to expose reads.
+Constructor queries are captured from actual execution, with default-field
+allocations distinguished from circuit assignments. No model-generated journal
+is substituted for a concrete transcript.
+
+[`VMConcrete`](../src/Conformance/VMConcrete.agda) supplies canonical
+little-endian atom semantics; the compiled `VMMain` executes the original
+concrete instruction sequence without calling the native opcode interpreter.
+Every resulting VM root and strength flag is compared with native VM replay.
+Map entry order alone is normalized.
+
+The runtime's `createZswapOutput` also registers commitment/output-index pairs
+**outside** VM execution. These are captured separately: all other context
+fields must remain unchanged, and the complete before/after index maps must
+equal the registrations derived from the model's independently computed
+output commitments. They are neither discarded from comparison nor credited
+to VM replay. This checks local descriptions, not Merkle qualification or
+asset ownership.
+
+### Exercised evidence
+
+The integrated run of the working tree reported:
+
+| Measure | Result |
+|---|---:|
+| Constructor and impure circuits | 53 |
+| Concrete/model observations | 225 |
+| Entrypoints missing successful or refused cases | 0 |
+| Divergent observations | 0 |
+| Fine-grained primitive calls | 1684 |
+
+Cases cover bootstrap, all three authentication arms, device lifecycle, inbox,
+unshielded custody, shielded exact/change sends to keys and contracts, grant
+issuance/revocation/generation/expiry, recovery and post-recovery old authority.
+Maximum-epoch/use-counter cases are explicitly synthetic represented states,
+not claimed to have been reached by executing billions of transitions.
+The JSON report records actual calls, signatures, witnesses, states, effects
+and transcripts; signatures are not made deterministic by replacing production
+signers. This is finite execution evidence, not universal equivalence.
+
+Persistent SHA-256 and typed fixed-width preimage encoding are implemented
+independently in [`independent-hash.ts`](../conformance/harness/independent-hash.ts),
+including coin commitment/nullifier recipes used by the model backend.
+The k256 published device-entry vector and integer/field/byte-width boundaries
+have separate regression checks. Elliptic-curve arithmetic, signature
+verification and Poseidon remain explicit runtime primitive dependencies.
+The executable transport is non-`--safe`; the model and property modules
+retain `--safe --without-K`.
+
+### Reproduce and remaining boundary
+
+Use a checkout of the exact target, its lockfile-installed dependencies, and
+Compact 0.35.0 generated artefacts. Set `FULL_IMPL_DIR` to that checkout's
+`contract` directory and `FULL_COMPACT_DIR` to the compiler directory. Then,
+from the specification checkout:
+
+```sh
+env LC_ALL=C.UTF-8 pagda --useUntracked false check \
+  src/Conformance/FullAccountMain.agda -- \
+  --compile --compile-dir=_build/full-account +RTS -M3G -H1G -RTS
+env LC_ALL=C.UTF-8 pagda --useUntracked false check \
+  src/Conformance/VMMain.agda -- \
+  --compile --compile-dir=_build/formal-vm +RTS -M3G -H1G -RTS
+export FULL_MODEL_BIN="$PWD/_build/full-account/FullAccountMain"
+export FORMAL_VM_BIN="$PWD/_build/formal-vm/VMMain"
+export FULL_REPORT="$PWD/_build/full-account/report.json"
+"$FULL_IMPL_DIR/node_modules/.bin/tsx" conformance/harness/full-main.ts
+"$FULL_IMPL_DIR/node_modules/.bin/tsx" --test \
+  conformance/harness/independent-hash.test.ts conformance/harness/vm-formal.test.ts
+```
+
+`FULL_CAPTURE_ONLY=1` is implementation capture **without** model conformance;
+it must not be reported as agreement. The full-account wire is `full-v1`,
+not the recovery monitor's `monitor-v1` or its Haskell/C ABI.
+
+Compilation with `--skip-zk --feature-zkir-v3` and local runtime execution
+succeeded. Full key generation and the local proof server could not fetch
+`https://srs.midnight.network/bls_midnight_2p10`: sandbox policy returned
+“Approval required for srs.midnight.network:443.” The cache was empty.
+The local node became healthy, but that is not proof generation, asset
+authentication or transaction admission evidence.
+
+Still outside this evidence: universal Compact-to-Agda refinement, a proof
+that the pinned WASM implements the formal VM semantics, authenticated native
+effects and ZK/on-chain execution. The npm WASM package supplies no source
+`gitHead`; its binary identity is pinned, not its source correspondence.
+Historical recovery pins and the enrolled gate lock remain unchanged.
 
 ## 1. Goal
 
@@ -74,6 +225,9 @@ enters through hashes and curve arithmetic interpreted by the primitive backend.
 
 ## 3. Where we are
 
+This table describes the earlier recovery slice. The newer pinned-main
+full-account coverage and its separate execution relation are recorded above.
+
 | Item | State | Evidence |
 |---|---|---|
 | `Program` DSL executable | yes: `eval`/`replay` are total functions | `src/Midnight/ContractDSL/Program.agda` |
@@ -89,6 +243,11 @@ enters through hashes and curve arithmetic interpreted by the primitive backend.
 | Reader-facing recovery proofs | Corrected account model has checked finite actual-admission device-authority exclusion and guard-premised recovery/rotation execution; concrete-model refinement remains open | `src/Passport.agda`, `Conformance.RecoveryAuthority` / `RecoveryExecution` |
 
 ## 4. Technical design
+
+This section describes the recovery-slice DSL/monitor architecture and its
+historical implementation seam. The full-account runner above uses the newer
+object-form `createCircuitContext` API, all three authentication arms and local
+shielded-effect descriptions; those descriptions are not authenticated assets.
 
 ### 4.1 Model side
 
@@ -201,18 +360,24 @@ implementation-produced transcript replay and recorded-read mutation checks.
 The remaining task is to decode those VM transcripts into model `Journal`s and
 validate their execution with `decExecution` before `Chain.admit`, establishing
 the translation boundary rather than equating runtime replay with a model certificate.
+The pinned-main runner now independently decodes concrete ledger/context effects
+and compares them with full-account execution. This does not retrofit the
+recovery monitor's certificates or prove universal generated-code refinement.
 
 **WP2 — Independent primitives.** Bind `Primitives` to an implementation that is not the
 system under test (`signer-rs` challenge path over JSON, or a native jubjub/SHA-256 library),
 so encoding bugs in `persistentHash`/curve code become detectable. Acceptance: a
 deliberately mis-encoded challenge on either side is reported.
+The full-account backend now uses independent SHA-256 and fixed-width encoding.
+Curve arithmetic/signature verification and Poseidon still share runtime code.
 
 **WP3 — Widen the slice.** Done at `5d12798` ([`conformance-recovery.md`](conformance-recovery.md)):
 `add_device`/`remove_device` with epoch, `rotate_enc_key`, recovery session, `recover_submit`/
 `cancel`/`finalise` with chain time, the identity/small-order recovery-key guard, and a corrected
-finalisation variant compared up to the entries it removes. Remaining, in order of cost:
-small-order *device* key scenario (via `ecMul`), k256 arm (secp256k1 primitives), grants
-lifecycle (map of records). Shielded custody only when an off-node Zswap state becomes available.
+finalisation variant compared up to the entries it removes. That slice omitted
+k256/grant execution and shielded flows. The pinned-main runner now models all
+authentication arms, bootstrap, grant lifecycle and both custody forms; local
+Zswap descriptions are exercised without claiming authenticated coin admission.
 
 **WP4 — Generators.** Recovery histories now generate counter-varied future
 plants and actually sign with them after finalisation, with exact dynamic
@@ -236,7 +401,9 @@ design when fixed (removes the RPC layer and its gotchas).
 
 ## 6. Risks and limits
 
-- **Shared oracle** until WP2: hashing/curve bugs common to both sides are invisible.
+- **Shared oracle:** the historical runner shares hashing and curves; the
+  full-account runner has independent SHA-256/encoding but still shares curves
+  and Poseidon. Bugs in those shared primitives can remain invisible.
 - **Bounded loops**: agreement is claimed only for runs within the bounds; `stuck` is
   reported, never silently accepted.
 - **Abort matching by message substring**: brittle under message edits in the contract;
@@ -245,10 +412,13 @@ design when fixed (removes the RPC layer and its gotchas).
   must fail, not skip, when a modelled circuit's signature changes.
 - **Toolchain**: RC compiler without launcher, SRS download blocked by proxy; `--skip-zk`
   suffices for the simulator but means proving is never exercised here.
-- **Not modelled**: coin movements (`receive/sendUnshielded`), the `use_counter+1` and
-  `post_epoch` casts; listed per slice in the findings.
+- **Earlier slice omissions:** coin movements and checked successor/epoch casts
+  were absent from the historical slice. They are explicit in the pinned-main
+  full-account model; this does not establish external asset authentication.
 
 ## 7. Non-goals
 
-A verified Compact compiler, a VM, proof-system conformance, distributional/privacy
-conformance, and any claim about flows the specification does not model.
+Finite execution comparison does not establish a verified Compact compiler or
+installed WASM, proof-system or distributional/privacy conformance, or correctness
+for unexercised inputs. The explicit formal VM and local representation proofs
+must not be presented as those stronger results.

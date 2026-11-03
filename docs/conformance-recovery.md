@@ -10,9 +10,13 @@ comparator uses source-shaped insertion; the intended contract fixes authority
 replacement. The [recovery specification](recovery-specification.md) describes
 the threat model and obligations. Historical numbers and transcripts below are
 not measurements of a repaired or deployed contract.
-For current executable integration, start at the
+For the recovery-slice integration, start at the
 [runtime transition monitor](#runtime-transition-monitor): checker, wire format,
 Haskell/C APIs, crypto backend and serialized implementation fixtures.
+The newer [pinned-main full-account run](conformance-testing-plan.md#pinned-main-full-account-execution)
+targets `fc19e471536febb2133f20e817847251622dcdf5` separately. That source
+already resets device membership during finalisation and invalidates retained
+grants by epoch; the historical repair below is not applied to it.
 
 The sections labelled historical predate the port to `main`'s certified-transaction
 API. The committed recovery baseline was `26ab5df`; the historical runtime-monitor and
