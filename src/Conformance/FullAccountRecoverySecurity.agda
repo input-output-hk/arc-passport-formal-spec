@@ -222,7 +222,7 @@ PendingEffect depositPrivate ctx xs s t = SamePending s t
 -- matching only: it records neither that the submission occurred in a given
 -- history nor that the record stayed unchanged in between (an equal record may
 -- recur after cancellation and resubmission). Trace-indexed occurrence is
--- established at the lifecycle layer (Passport.AccountSecurityProperties).
+-- established in Passport.AccountRecoveryOccurrenceProperties.
 record Installed (s : State) : Set where
   field
     submitContext : Context

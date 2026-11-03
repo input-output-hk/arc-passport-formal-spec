@@ -44,6 +44,9 @@ import Midnight.ContractDSL.AdversarialLifecycleProperties as AdversarialPropert
 import Passport.Account as Account
 open import Passport.AccountLifecycle P using (Environment; RuntimeCall; executionContext; lifecycle)
 open import Passport.AccountSecurity P address ownership
+open import Passport.AccountRecoveryOccurrence P address using
+  (Ordinary; ordinaryActivation; ordinaryDevice; ordinaryGrant; ordinaryUnshieldedDeposit;
+   ordinaryShieldedDeposit; Retains; refused; ordinary; Retained; done; kept)
 open Semantics using (Entrypoint; construct; activation; device; grant; depositPublic;
   depositPrivate; submitRecovery; finaliseRecovery; execute)
 open Device using (deviceArguments; deviceAuth; deviceCoin; verificationMessage)
@@ -675,3 +678,89 @@ finalisation-enacts-occurrence env call h finalising committed
   where
   finalisation = RecoveryFacts.finalise-evidence (executionContext address env) executed
   module F = Recovery.Finalisation.Evidence finalisation
+
+------------------------------------------------------------------------
+-- Focused reader-facing projections of the supporting certifications
+
+dispatches : ∀ env (call : RuntimeCall) {before answer effects after} →
+  Account.Transition P (executionContext address env) (RuntimeCall.request call) before
+    (Account.committed answer effects) after →
+  Σ Entrypoint λ e → Dispatched e env call before answer after effects
+dispatches env call committed with accepted-dispatch env call committed
+... | e , _ , evidence = e , evidence
+
+dispatched-requests : ∀ e env call {before answer effects after} →
+  Dispatched e env call before answer after effects →
+  signedRequests before env call ≡
+    entrypointRequests e (executionContext address env) (arguments (RuntimeCall.request call)) before
+dispatched-requests e env call d = signed-resolved _ env call (Dispatched.resolved d)
+
+dispatched-tokens : ∀ e env call {before answer effects after} →
+  Dispatched e env call before answer after effects →
+  requiredTokens before env call ≡ map (uncurry′ Symbolic.token)
+    (entrypointRequests e (executionContext address env) (arguments (RuntimeCall.request call)) before)
+dispatched-tokens e env call d = cong (map (uncurry′ Symbolic.token)) (dispatched-requests e env call d)
+
+device-request-computation : ∀ c op ctx xs {s v t} (evidence : Device.DeviceCall c op ctx xs s v t) →
+  deviceRequests c op ctx xs s ≡ calledRequest evidence ∷ []
+device-request-computation c op ctx xs {s} evidence =
+  device-requests c op ctx xs s (Run.execution E.encoded)
+    (Device.Advanced.previousCell E.nonceAdvanced) (Run.execution E.challengeComputed)
+    (BindingFacts.verified-digest c a E.challengeValue (verificationMessage c) verification checked)
+  where
+  module E = Device.DeviceCall evidence
+  a = deviceAuth c op xs
+  verified = Device.Authorisation.verified E.authorised
+  verification : Succeeded (verify c a E.challengeValue (verificationMessage c)) s
+  verification = succeeded tt s (Run.journal verified) (Run.execution verified)
+  checked = BindingFacts.verification-evidence c a E.challengeValue (verificationMessage c) verification
+
+grant-request-computation : ∀ c op ctx ga ys {s} (evidence : Grant.GrantCallEvidence c op ctx ga ys s) →
+  grantRequests c op ctx ga ys s ≡ grantedRequest evidence ∷ []
+grant-request-computation c op ctx ga ys {s} evidence =
+  grant-requests c op ctx ga ys s (Run.execution E.identified) (Run.execution E.recorded)
+    (Run.execution E.challenged)
+    (BindingFacts.verified-digest c (authorisation ga) E.challengeValue
+      "invalid grant signature" verification checked)
+  where
+  module E = Grant.GrantCallEvidence evidence
+  verification : Succeeded (verify c (authorisation ga) E.challengeValue "invalid grant signature") s
+  verification = succeeded tt s (Run.journal E.verified) (Run.execution E.verified)
+  checked = BindingFacts.verification-evidence c (authorisation ga) E.challengeValue
+    "invalid grant signature" verification
+
+submission-request-computation : ∀ ctx xs {s t} (evidence : Recovery.Submission.Evidence ctx xs s t) →
+  recoveryRequests ctx xs s ≡ submittedRequests evidence
+submission-request-computation ctx xs {s} evidence =
+  recovery-requests ctx xs s (Recovery.Stores.observed E.epochCell)
+    (Recovery.Stores.observed E.nonceCell) (Recovery.Stores.observed E.recoveryKeyCell)
+    (Run.execution E.domainHash) (Run.execution E.challengeHash)
+    (BindingFacts.schnorr-accepted E.recoveryKey A.recoveryR A.recoveryS E.digest
+      "invalid recovery signature" (succeeded tt s (Run.journal E.recoverySignature)
+        (Run.execution E.recoverySignature)))
+    (BindingFacts.schnorr-accepted A.successorKey A.successorR A.successorS E.digest
+      "invalid successor co-signature" (succeeded tt s (Run.journal E.successorSignature)
+        (Run.execution E.successorSignature)))
+  where
+  module E = Recovery.Submission.Evidence evidence
+  module A = SubmitArguments xs
+
+request-views : ∀ {X : Set} (view : Binding.Request → X) {knowledge}
+  (trace : Signatures.Trace Signatures.initial knowledge) {requests} →
+  All (λ request → Σ Value (Encodes request)) requests →
+  All (TraceAgreement view trace) requests →
+  All (λ request → Signatures.Available knowledge (uncurry′ Symbolic.token request)) requests →
+  All (TraceRequestProvenance view trace) requests
+request-views view trace [] [] [] = []
+request-views view trace ((d , encodes) ∷ encodings) (agreement ∷ agreements)
+  (available ∷ availables) =
+  BindingFacts.request-provenance ownership view encodes trace (agreement d encodes) available ∷
+  request-views view trace encodings agreements availables
+
+dispatched-available : ∀ e env call {before answer effects after knowledge} →
+  Dispatched e env call before answer after effects →
+  All (Signatures.Available knowledge) (requiredTokens before env call) →
+  All (λ request → Signatures.Available knowledge (uncurry′ Symbolic.token request))
+    (entrypointRequests e (executionContext address env) (arguments (RuntimeCall.request call)) before)
+dispatched-available e env call {knowledge = knowledge} d available =
+  All.map⁻ (subst (All (Signatures.Available knowledge)) (dispatched-tokens e env call d) available)

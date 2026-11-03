@@ -175,10 +175,15 @@ data Withdrawal : Operation → Set where
 record GrantFinalState (c : Curve) (op : Operation) (ctx : Context) (ga : GrantAuth)
     (xs : List Value) (s t : State) : Set where
   field callEvidence : GrantCallEvidence c op ctx ga xs s
-        storedGrant : lookupMap (identifier callEvidence) (fields (cell "grants" t)) ≡
-          just (settledGrant (grantRecord callEvidence) (suc (number (grantNonce (grantRecord callEvidence))))
-            (Settlement.commitment (settlement callEvidence)))
-        storedFields : SettledRecord (grantRecord callEvidence) (suc (number (grantNonce (grantRecord callEvidence))))
-          (Settlement.commitment (settlement callEvidence))
-          (settledGrant (grantRecord callEvidence) (suc (number (grantNonce (grantRecord callEvidence))))
-            (Settlement.commitment (settlement callEvidence)))
+
+  settledNonce : ℕ
+  settledNonce = suc (number (grantNonce (grantRecord callEvidence)))
+
+  settledCommitment : Value
+  settledCommitment = Settlement.commitment (settlement callEvidence)
+
+  settledValue : Value
+  settledValue = settledGrant (grantRecord callEvidence) settledNonce settledCommitment
+
+  field storedGrant : lookupMap (identifier callEvidence) (fields (cell "grants" t)) ≡ just settledValue
+        storedFields : SettledRecord (grantRecord callEvidence) settledNonce settledCommitment settledValue

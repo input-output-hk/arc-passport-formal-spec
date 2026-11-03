@@ -4,100 +4,52 @@ open import Conformance.FullAccountTypes using (Primitives; Value)
 open import Midnight.ContractDSL.SymbolicSigning using (Ownership)
 import Conformance.FullAccountSignatureBinding as SignatureBinding
 
--- Local contract security of accepted full-account runtime calls
--- (Passport.AccountSecurity). Guard facts are derived from the actual
--- dispatcher and entrypoint evaluators for any primitive backend P; nothing
--- assumes an accepted call was authorized. Cryptographic content enters only
--- through the joint histories' invocation premise: requiredTokens, the tokens
--- of source-computed requests whose signatures verify, must be available
--- (an ideal symbolic boundary; its scope is in AccountSecurity's header).
--- Provenance is message-level unless the trace-scoped agreement premise is
--- supplied; approval is a trusted abstract input, not human consent. These
--- are local source-execution results, not ledger admission or adoption.
--- Proofs: Passport.AccountSecurityProof.
+-- Each request computation below uses just one entrypoint's guard evidence.
+-- Obtain that evidence from FullAccountDeviceSecurityProperties.device-call-evidence,
+-- FullAccountGrantSecurityProperties.grant-call-evidence, or
+-- FullAccountRecoverySecurityProperties.submit-evidence respectively.
+-- FullAccountSignatureBindingProperties.authorisation-message supplies Encodes
+-- from device/grant challenge and verification evidence. Its recovery-message
+-- supplies Encodes for both submission keys using the submission's tag/hash runs.
+-- AccountRequestDispatchProperties connects these source builders to the actual
+-- dispatcher's signedRequests and requiredTokens. Its dispatched-available feeds
+-- request-views at AccountSecurity.Histories.signingHistory h, using the joint
+-- invocation's token premise. Agreement is trace-scoped, not digest injectivity;
+-- approval is a trusted input, not human consent. Full concrete certifications
+-- remain in AccountSecurityProof.accepted-call[-provenance/-requests].
 module Passport.AccountSecurityProperties (P : Primitives) (address : Value)
   (ownership : SignatureBinding.Key P → Ownership) where
 
-open import Data.Bool.Base using (true)
-open import Data.List.Base using (List)
+open import Data.List.Base using ([]; _∷_)
 open import Data.List.Relation.Unary.All using (All)
-open import Data.Maybe.Base using (just)
-open import Data.Product using (Σ; _×_; _,_; uncurry′)
+open import Data.Product using (Σ; uncurry′)
 open import Relation.Binary.PropositionalEquality using (_≡_)
 
-open import Conformance.FullAccountTypes using (flag)
-import Passport.Account as Account
-open import Passport.AccountLifecycle P using (RuntimeCall; executionContext)
 open import Passport.AccountSecurity P address ownership
-import Passport.AccountSecurityProof as AccountSecurityProof
-open Semantics using (finaliseRecovery)
 open Symbolic using (module Signatures)
+import Passport.AccountSecurityProof P address ownership as Proof
 
-module Proof = AccountSecurityProof P address ownership
+-- These equalities identify the exact source-computed requests; they neither
+-- assume authorization from acceptance nor combine unrelated entrypoint guards.
+device-request-computation : ∀ c op ctx xs {s v t} (evidence : Device.DeviceCall c op ctx xs s v t) →
+  deviceRequests c op ctx xs s ≡ calledRequest evidence ∷ []
+device-request-computation = Proof.device-request-computation
 
--- Every accepted runtime call resolves, by the dispatcher's own lookup, to a
--- runtime entrypoint (never the constructor). AcceptedCall then records that
--- entrypoint's evaluator evidence and the requests whose signatures it
--- verified, and these are exactly the signed requests computed from the
--- before state. Grant calls resolve only for withdrawals, and their evidence
--- includes the grant record stored in the final state (advanced nonce, new
--- spent commitment). Activation, deposits and finalisation verify no signature.
-accepted-call : ∀ env (call : RuntimeCall) {before answer effects after} →
-  Account.Transition P (executionContext address env) (RuntimeCall.request call) before
-    (Account.committed answer effects) after →
-  Σ (List SignedRequest) λ requests → AcceptedCall env call before answer after effects requests ×
-    signedRequests before env call ≡ requests
-accepted-call = Proof.accepted-call
+grant-request-computation : ∀ c op ctx ga ys {s} (evidence : Grant.GrantCallEvidence c op ctx ga ys s) →
+  grantRequests c op ctx ga ys s ≡ grantedRequest evidence ∷ []
+grant-request-computation = Proof.grant-request-computation
 
--- An accepted invocation from a rooted joint history: the token of each
--- verified request is attacker-controlled at that joint state or honestly
--- issued in the history's signing trace.
-accepted-call-provenance : ∀ {before knowledge after env call answer effects}
-  (h : Histories.History (before , knowledge)) →
-  All (Signatures.Available knowledge) (requiredTokens before env call) →
-  Account.Transition P (executionContext address env) (RuntimeCall.request call) before
-    (Account.committed answer effects) after →
-  Σ (List SignedRequest) λ requests → AcceptedCall env call before answer after effects requests ×
-    All (λ request → Provenance h (uncurry′ Symbolic.token request)) requests
-accepted-call-provenance = Proof.accepted-call-provenance
+submission-request-computation : ∀ ctx xs {s t} (evidence : Recovery.Submission.Evidence ctx xs s t) →
+  recoveryRequests ctx xs s ≡ submittedRequests evidence
+submission-request-computation = Proof.submission-request-computation
 
--- Under SignatureBinding's trace-scoped agreement premise for each signed
--- request the call carries (any honestly signed request with the same key and
--- digest in the history's signing trace has the same view), each verified
--- request's key is attacker-controlled, or a request with that view was
--- approved and honestly signed. No global digest uniqueness is assumed.
-accepted-call-requests : ∀ {X : Set} (view : Binding.Request → X)
-  {before knowledge after env call answer effects}
-  (h : Histories.History (before , knowledge)) →
-  All (Signatures.Available knowledge) (requiredTokens before env call) →
-  All (AgreesIn view h) (signedRequests before env call) →
-  Account.Transition P (executionContext address env) (RuntimeCall.request call) before
-    (Account.committed answer effects) after →
-  Σ (List SignedRequest) λ requests → AcceptedCall env call before answer after effects requests ×
-    All (RequestProvenance view h) requests
-accepted-call-requests = Proof.accepted-call-requests
-
--- In a deployment-rooted account history, a flagged pending recovery record
--- comes from an actual accepted recover_submit step of that history, after
--- which every step is a refusal or an accepted ordinary call keeping the
--- pending cells: no later submission, cancellation or finalisation.
-pending-origin : ∀ {s p} (h : Runs.History s) → Recovery.Stores s "pending_recovery" p →
-  flag p ≡ true → SubmittedIn (Runs.History.execution h)
-pending-origin = Proof.pending-origin
-
--- The same for joint histories, in their projected account trace.
-joint-pending-origin : ∀ {s knowledge p} (h : Histories.History (s , knowledge)) →
-  Recovery.Stores s "pending_recovery" p → flag p ≡ true →
-  SubmittedIn (Histories.contractTrace (Histories.History.execution h))
-joint-pending-origin = Proof.joint-pending-origin
-
--- An accepted finalisation at the end of a history enacts the successor entry,
--- recovery key and deadline installed by that history's submission
--- occurrence. This is local contract safety: no guardian consent, fairness or
--- ledger adoption is claimed.
-finalisation-enacts-occurrence : ∀ env (call : RuntimeCall) {before answer effects after} →
-  (h : Runs.History before) → resolve (RuntimeCall.request call) ≡ just finaliseRecovery →
-  Account.Transition P (executionContext address env) (RuntimeCall.request call) before
-    (Account.committed answer effects) after →
-  EnactsOccurrence (executionContext address env) (Runs.History.execution h) after
-finalisation-enacts-occurrence = Proof.finalisation-enacts-occurrence
+-- Available tokens for encoded requests yield attacker control or honest
+-- issuance of the same view. Apply separately to the path selected by dispatch;
+-- no Device, Grant or Recovery guard record appears in this provenance claim.
+request-views : ∀ {X : Set} (view : Binding.Request → X) {knowledge}
+  (trace : Signatures.Trace Signatures.initial knowledge) {requests} →
+  All (λ request → Σ Value (Encodes request)) requests →
+  All (TraceAgreement view trace) requests →
+  All (λ request → Signatures.Available knowledge (uncurry′ Symbolic.token request)) requests →
+  All (TraceRequestProvenance view trace) requests
+request-views = Proof.request-views

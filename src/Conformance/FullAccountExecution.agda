@@ -1,8 +1,8 @@
 {-# OPTIONS --safe --without-K #-}
 
--- Success witnesses for the existing account state-and-journal monad.
--- These helpers inspect its actual evaluator; they introduce no authorization
--- predicate or cryptographic assumption.
+-- Statement vocabulary for accepted source executions, not an authorization
+-- judgment or cryptographic assumption. The bind decompositions below support
+-- proofs about these execution witnesses.
 module Conformance.FullAccountExecution where
 
 open import Conformance.FullAccountTypes

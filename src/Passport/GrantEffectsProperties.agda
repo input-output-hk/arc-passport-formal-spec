@@ -2,9 +2,13 @@
 
 open import Conformance.FullAccountTypes
 
--- Every mutation below is extracted from the pinned source evaluator. The
--- runtime witness excludes constructor calls and non-withdrawal grant arms
--- which exist internally but are not in the public dispatch table.
+-- issue-result and revoke-result extract the installed record and map update;
+-- spend-mutation extracts the withdrawal's whole-map settlement update.
+-- execute-effect classifies every public runtime arm as preserving, issuing,
+-- revoking, clearing or spending grants (see GrantEffects.GrantEffect).
+-- GrantSecurityProperties.grant-final-state instead exposes the settled record's
+-- lookup and fields; SpendMutation also fixes the surrounding map.
+-- RuntimeEntrypoint excludes constructor and internal-only grant arms.
 module Passport.GrantEffectsProperties (P : Primitives) where
 
 import Conformance.FullAccount as Model

@@ -101,25 +101,31 @@ module _ (ownership : Key → Signing.Ownership) where
 
   -- Device and grant calls: actual challenge and verification to provenance.
   authorisation-provenance : ∀ c grant op addr a args nonce message {s h t es u final} →
-    challengeAt c grant (operationName op) addr a args nonce s ≡ accepted h t es →
+    let key = authorisingKey c a
+        request = authorisedRequest c grant op addr a args nonce
+        requestToken = token key request
+    in challengeAt c grant (operationName op) addr a args nonce s ≡ accepted h t es →
     Succeeded (verify c a h message) u →
     (trace : Trace initial final) →
-    Available final (token (authorisingKey c a) (authorisedRequest c grant op addr a args nonce)) →
+    Available final requestToken →
     Σ (Verified c a h) λ verified →
-      Controlled final (authorisingKey c a) ⊎
-      Σ (HonestlyIssued trace (token (authorisingKey c a) (authorisedRequest c grant op addr a args nonce)))
-        λ issued → encode (authorisingKey c a) (HonestlyIssued.request issued) ≡ just (signedDigest verified)
+      Controlled final key ⊎
+      Σ (HonestlyIssued trace requestToken) λ issued →
+        encode key (HonestlyIssued.request issued) ≡ just (signedDigest verified)
   authorisation-provenance = Q.authorisation-provenance
 
   -- recover_submit: either signer, recovery key or successor (possession proof).
   recovery-provenance : ∀ r pk R S message {s dst t es u h v fs w final} →
-    hashTag recoverySubmitTag s ≡ accepted dst t es →
+    let key = signingKey jubjub pk
+        request = recoveryRequest r
+        requestToken = token key request
+    in hashTag recoverySubmitTag s ≡ accepted dst t es →
     hash (submitPreimage dst r) u ≡ accepted h v fs →
     Succeeded (schnorr pk R S h message) w →
     (trace : Trace initial final) →
-    Available final (token (signingKey jubjub pk) (recoveryRequest r)) →
+    Available final requestToken →
     SchnorrAccepts pk R S h ×
-      (Controlled final (signingKey jubjub pk) ⊎
-       Σ (HonestlyIssued trace (token (signingKey jubjub pk) (recoveryRequest r))) λ issued →
-         encode (signingKey jubjub pk) (HonestlyIssued.request issued) ≡ just h)
+      (Controlled final key ⊎
+       Σ (HonestlyIssued trace requestToken) λ issued →
+         encode key (HonestlyIssued.request issued) ≡ just h)
   recovery-provenance = Q.recovery-provenance
