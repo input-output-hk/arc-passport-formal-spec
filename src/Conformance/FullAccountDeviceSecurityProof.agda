@@ -668,6 +668,20 @@ round-outside-bodies revokeAllGrants = refl ∷ refl ∷ []
 round-outside-bodies publishRecovery = refl ∷ refl ∷ refl ∷ refl ∷ refl ∷ refl ∷ []
 round-outside-bodies cancelRecovery = refl ∷ refl ∷ refl ∷ refl ∷ []
 
+epoch-outside-bodies : ∀ op → All (λ label → stringEqual "device_epoch" label ≡ false) (bodyWrites op)
+epoch-outside-bodies withdrawUnshielded = refl ∷ []
+epoch-outside-bodies withdrawShielded = []
+epoch-outside-bodies withdrawToContract = []
+epoch-outside-bodies appendInbox = refl ∷ refl ∷ []
+epoch-outside-bodies rotateEncKey = refl ∷ []
+epoch-outside-bodies addDevice = refl ∷ refl ∷ []
+epoch-outside-bodies removeDevice = refl ∷ refl ∷ []
+epoch-outside-bodies issueGrant = refl ∷ []
+epoch-outside-bodies revokeGrant = refl ∷ []
+epoch-outside-bodies revokeAllGrants = refl ∷ refl ∷ []
+epoch-outside-bodies publishRecovery = refl ∷ refl ∷ refl ∷ refl ∷ refl ∷ refl ∷ []
+epoch-outside-bodies cancelRecovery = refl ∷ refl ∷ refl ∷ refl ∷ []
+
 ------------------------------------------------------------------------
 -- Ledger states produced by authorise
 
@@ -1372,6 +1386,72 @@ entry-consumed {before = before} {next} authorised distinct =
     (member-insertSet current next (removeSet current (fields (cell "devices" before))) distinct
       (member-removeSet current (fields (cell "devices" before))))
   where current = Authorisation.current authorised
+
+private
+  cell-frame : ∀ k {s t} → lookupCell k (ledger t) ≡ lookupCell k (ledger s) → cell k t ≡ cell k s
+  cell-frame k {s} {t} same with lookupCell k (ledger t) | lookupCell k (ledger s)
+  ... | nothing | nothing = refl
+  ... | just v | just w = just-injective same
+  ... | nothing | just w with same
+  ... | ()
+  cell-frame k {s} {t} same | just v | nothing with same
+  ... | ()
+
+  run-answer-unique : ∀ {A : Set} {m : M A} {s x y t u} →
+    Run m s x t → Run m s y u → x ≡ y
+  run-answer-unique (run _ first) (run _ second) = answer (trans (sym first) second)
+    where
+    answer : ∀ {A x y t u es fs} → accepted {A} x t es ≡ accepted y u fs → x ≡ y
+    answer refl = refl
+
+consumed-credentials-refused : ∀ c op {ctx xs s y t}
+  (first : DeviceCall c op ctx xs s y t) →
+  All (λ label → stringEqual "devices" label ≡ false) (bodyWrites op) →
+  equal (Authorisation.current (DeviceCall.authorised first)) (DeviceCall.rolledEntry first) ≡ false →
+  ∀ {ctx′ a h next u} → self ctx′ ≡ self ctx → a ≡ deviceAuth c op xs →
+  ¬ Authorisation c ctx′ a h t next u
+consumed-credentials-refused c op {ctx} {xs} {s} {y} {t} first framed distinct
+  {ctx′} {a} sameSelf sameAuth second = true≢false
+    (trans (sym (Authorisation.currentLive second))
+      (trans (cong (λ entry → member entry (fields (cell "devices" t))) sameCurrent) absent))
+  where
+  module First = DeviceCall first
+  module Initial = Authorisation First.authorised
+  module Second = Authorisation second
+
+  bodyDevices = body-frame "devices" op ctx (deviceArguments op xs) (deviceCoin op ctx)
+    First.callerEntry framed First.bodyRun
+
+  absent : member Initial.current (fields (cell "devices" t)) ≡ false
+  absent = trans (cong (λ devices → member Initial.current (fields devices))
+    (cell-frame "devices" {s = First.authorisedState} {t = t} bodyDevices))
+    (entry-consumed First.authorised distinct)
+
+  sameEpoch : Second.epoch ≡ Initial.epoch
+  sameEpoch = just-injective (trans (sym Second.epochCell)
+    (trans (body-frame "device_epoch" op ctx (deviceArguments op xs) (deviceCoin op ctx)
+      First.callerEntry (epoch-outside-bodies op) First.bodyRun)
+      (trans (Initial.unchanged "device_epoch" refl refl refl) Initial.epochCell)))
+
+  sameCurrent : Second.current ≡ Initial.current
+  sameCurrent = run-answer-unique
+    (subst (λ m → Run m t Second.current t)
+      (cong₂ (λ addr credentials → entryAt c addr credentials (number Initial.epoch)
+        (counter credentials)) sameSelf sameAuth)
+      (subst (λ epoch → Run (entryAt c (self ctx′) a (number epoch) (counter a))
+        t Second.current t) sameEpoch Second.currentEntry))
+    (proj₂ (pure-run (entryAt-pure c (self ctx) (deviceAuth c op xs)
+      (number Initial.epoch) (counter (deviceAuth c op xs))) Initial.currentEntry) t)
+
+exact-device-replay-refused : ∀ c op ctx xs {s y t}
+  (first : Run (deviceCall c op ctx xs) s y t) →
+  All (λ label → stringEqual "devices" label ≡ false) (bodyWrites op) →
+  equal (Authorisation.current (DeviceCall.authorised (device-call-evidence c op ctx xs first)))
+    (DeviceCall.rolledEntry (device-call-evidence c op ctx xs first)) ≡ false →
+  ∀ {result after} → ¬ Run (deviceCall c op ctx xs) t result after
+exact-device-replay-refused c op ctx xs first framed distinct second =
+  consumed-credentials-refused c op (device-call-evidence c op ctx xs first) framed distinct
+    refl refl (DeviceCall.authorised (device-call-evidence c op ctx xs second))
 
 ------------------------------------------------------------------------
 -- Challenge separation
