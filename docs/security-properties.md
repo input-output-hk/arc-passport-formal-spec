@@ -154,6 +154,11 @@ it does not assume the caller's presented total already equals historical spendi
 Reissue and reset preserve the accounting of earlier episodes rather than erasing
 their spending. These remain local contract results, not ledger-adoption proofs.
 
+This is the contract-level counterpart of P7's issuance-scoped cumulative
+allowance (I-7.8), not a per-operation cap or rate limit. Fresh issuance requires
+account authorization; it starts a separately bounded episode rather than
+resetting the accounting of the previous issuance.
+
 The [`revocation history statements`](../src/Passport/RevocationExclusionProperties.agda)
 derive nondecreasing authorization nonce, device epoch and grant generation,
 strictly increasing issuance stamps, and persistent stale-record exclusion.
@@ -166,6 +171,25 @@ Device `immediate-replay-collision` covers consecutive successful calls on the
 same curve and operation: equal challenges imply distinct typed source preimages
 with equal hashes. It is not a theorem that the same signature cannot verify a
 different effective challenge, nor a whole-history/cross-operation replay theorem.
+
+`exact-device-replay-refused` additionally proves that a successful device call
+cannot be repeated verbatim from its final state when its body preserves the
+device set and its current and rolled entries differ. This covers all device
+operations except add/remove-device. `consumed-credentials-refused` excludes
+authorization using the same account identity and decoded authentication
+arguments at that state, even with a different challenge. Actual entry
+separation is an explicit premise, not inferred from different counters; these
+results cover neither intervening histories nor ledger adoption.
+
+The [`ordinary device-removal statements`](../src/Passport/DeviceRemovalProperties.agda)
+extract target membership, distinction from the caller's rolled entry, stored
+count greater than one, exact removal and a one-step count decrement from a
+committed source removal. The removed literal entry remains absent along later
+runtime history unless an actual activation, rolling, enrolment or recovery
+successor introduces it. A later device call whose source entry computation
+yields that removed value is excluded before such reintroduction. This is
+entry-specific: other openings for the same key may remain live. No permanent
+key ban, count/cardinality equality or ledger-adoption result is established.
 
 ### P12 · Snapshot-aware value integrity
 
@@ -248,6 +272,17 @@ fees charged to this account in the fee asset. Liveness requires a strategy that
 succeeds on every execution satisfying the data, proving, fee, and fair-progress
 assumptions, not just one favourable continuation. P11's authorisation limits
 and P8's operator independence still apply.
+
+I-13.5–I-13.7 distinguish three obligations within `RecoverabilityPreserved`:
+durable recovery information must already be available when a spend takes
+effect, it must correctly describe the actual remaining holdings and support
+recovery with the applicable key material, and an authorized but malicious
+scoped grantee must not destroy recoverability of value outside its spending
+authority. `SupportedEvolution` must therefore include adversarial choices by
+such grantees, not only honest-client executions. Neither a later backfill
+transaction nor an assumed surviving private coin store establishes crash safety;
+atomic append alone does not establish description or encryption-key binding.
+These are outcome requirements, not a mandate for a particular inbox or circuit.
 
 The [custody baseline](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/docs/mps-mip/mips/mip-xxxx-native-asset-custody.md#L723-L759)
 has two distinct gaps. Poisoned outsider deposits fall outside honestly acquired

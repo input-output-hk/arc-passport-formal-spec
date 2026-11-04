@@ -263,6 +263,23 @@ These results do not authenticate environment time, callers or coin witnesses,
 establish guardian consent, model human approval, prove fairness, or bridge local
 execution to ledger adoption. No such assumptions are silently added.
 
+Focused replay smoke exercised 57 expected production-runtime outcomes, including
+nine accepted-first/refused-repeat pairs: append-inbox, encryption-key rotation
+and unshielded withdrawal on each of jubjub, k256 and P256. The
+[`device replay statements`](../src/Conformance/FullAccountDeviceSecurityProperties.agda)
+prove immediate refusal across the wider class of bodies preserving the device
+set, conditional on separation of the actual current and rolled entries.
+
+Focused ordinary-removal smoke exercised 21 circuit calls plus three constructors
+across the same schemes. Each sequence removed an enrolled target (stored count
+2 to 1, rolled caller retained), accepted an unrelated rotation, refused use of
+the removed opening, explicitly re-enrolled that entry, then accepted its use.
+The [`removal statements`](../src/Passport/DeviceRemovalProperties.agda) establish
+source removal guards/effects and subsequent literal-entry exclusion until an
+actual introduction occurrence; other openings for the same key may remain live.
+Both smokes used the pinned implementation and production signing/witness
+fixtures; neither is an Agda/native comparison, ZK proof or ledger-adoption proof.
+
 ### Local history invariants
 
 [`GrantEffectsProperties`](../src/Passport/GrantEffectsProperties.agda) extracts

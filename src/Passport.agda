@@ -66,6 +66,9 @@ import Passport.GrantSpendingProperties
 -- Device exclusion additionally requires relevant-entry separation.
 import Passport.RevocationExclusion
 import Passport.RevocationExclusionProperties
+-- Ordinary removal: literal-entry exclusion until a subsequent introduction.
+import Passport.DeviceRemoval
+import Passport.DeviceRemovalProperties
 
 -- Per-color balance conservation against declared contract effects, not adopted
 -- ledger balances, fees or snapshot reports.
@@ -135,6 +138,7 @@ import Passport.AccountRecoveryOccurrenceProof
 import Passport.GrantEffectsProof
 import Passport.GrantSpendingProof
 import Passport.RevocationExclusionProof
+import Passport.DeviceRemovalProof
 import Passport.UnshieldedAccountingProof
 import Passport.UnshieldedAccountingNeutral
 import Passport.OutsiderPreservationProof
