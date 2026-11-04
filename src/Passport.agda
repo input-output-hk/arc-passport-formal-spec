@@ -48,6 +48,12 @@ import Conformance.FullAccountDeviceSecurity
 import Conformance.FullAccountDeviceSecurityProperties
 import Conformance.FullAccountGrantSecurity
 import Conformance.FullAccountGrantSecurityProperties
+-- Intended grant policy enforcement under relevant-opening agreement.
+import Conformance.FullAccountGrantScope
+import Conformance.FullAccountGrantScopeProperties
+-- Grant withdrawals preserve account authority and other grants.
+import Passport.GrantConfinement
+import Passport.GrantConfinementProperties
 import Conformance.FullAccountRecoverySecurity
 import Conformance.FullAccountRecoverySecurityProperties
 import Passport.AccountSecurity
@@ -62,6 +68,9 @@ import Passport.GrantEffectsProperties
 -- Accumulated caps per actual issuance, with relevant spent-opening agreement.
 import Passport.GrantSpending
 import Passport.GrantSpendingProperties
+-- Same-issuance historical replay exclusion under explicit binding premises.
+import Passport.GrantReplay
+import Passport.GrantReplayProperties
 -- Actual revocation/recovery boundaries and reauthorization occurrences.
 -- Device exclusion additionally requires relevant-entry separation.
 import Passport.RevocationExclusion
@@ -129,6 +138,8 @@ import Conformance.FullAccountProof
 import Conformance.FullAccountSignatureBindingProof
 import Conformance.FullAccountDeviceSecurityProof
 import Conformance.FullAccountGrantSecurityProof
+import Conformance.FullAccountGrantScopeProof
+import Passport.GrantConfinementProof
 import Conformance.FullAccountRecoverySecurityProof
 import Conformance.FullAccountRecoverySecurityHelpers
 import Conformance.FullAccountRecoverySecurityStages
@@ -137,6 +148,7 @@ import Passport.AccountSecurityProof
 import Passport.AccountRecoveryOccurrenceProof
 import Passport.GrantEffectsProof
 import Passport.GrantSpendingProof
+import Passport.GrantReplayProof
 import Passport.RevocationExclusionProof
 import Passport.DeviceRemovalProof
 import Passport.UnshieldedAccountingProof

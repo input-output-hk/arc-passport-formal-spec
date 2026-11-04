@@ -28,6 +28,18 @@ The [removal proofs](../src/Passport/DeviceRemovalProperties.agda) extract the s
 
 [Grant proofs](../src/Conformance/FullAccountGrantSecurityProperties.agda) derive current/active/unexpired record checks, scope and recipient restrictions, numerical caps, verification, and the nonce/spent commitment stored after execution. Commitment equality is not automatically equality of intended keys, assets or recipients; those interpretations require relevant-opening agreement.
 
+### Semantic grant scope
+
+The [semantic scope proofs](../src/Conformance/FullAccountGrantScopeProperties.agda) connect accepted typed runtime withdrawals to an explicitly witnessed intended asset, caller policy, recipient policy and whole-held-coin maximum under relevant-pair object/caller opening agreement. Unrestricted sentinels and pinned policies are distinguished; the result does not establish native hash binding, authenticated coin ownership or ledger adoption.
+
+### Grant authority confinement
+
+The [confinement proofs](../src/Passport/GrantConfinementProperties.agda) show that grant withdrawals preserve account authority, including devices, recovery records and encryption keys, through finite withdrawal/refusal histories. Each accepted withdrawal also preserves other grants under identifier separation and its own issuance/scope while settling nonce/spending; structural preservation does not establish change recoverability or availability.
+
+### Historical grant replay exclusion
+
+The [grant replay proofs](../src/Passport/GrantReplayProperties.agda) derive strictly increasing nonces between accepted spends without intervening reissuance, including zero-value spends, and exclude reuse of the old symbolic token under relevant request-binding agreement. Exclusion of repeated concrete signature material additionally requires an external signature-token interpretation law; concrete cryptographic realization and ledger adoption remain open.
+
 ### Grants-map mutation effects
 
 [Source mutation proofs](../src/Passport/GrantEffectsProperties.agda) extract issuance, revocation and settlement updates, together with a classification of grants-map effects for runtime entrypoints. These local execution facts support spending and exclusion histories; they are distinct from the accumulated-spend invariant itself.
