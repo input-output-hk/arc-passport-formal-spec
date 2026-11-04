@@ -1,10 +1,10 @@
 # Passport proof status report
 
-Target: Passport [`fc19e471536febb2133f20e817847251622dcdf5`](https://github.com/midnightntwrk/passport/tree/fc19e471536febb2133f20e817847251622dcdf5), the latest fetched `main` when this work began. Formalization branch: `feat/passport-main-correspondence`.
+Scope: Passport [`fc19e471536febb2133f20e817847251622dcdf5`](https://github.com/midnightntwrk/passport/tree/fc19e471536febb2133f20e817847251622dcdf5).
 
 ## Current state
 
-All packages in the proof inventory below are proved, merged and covered by the integrated Agda entrypoint check, including revocation/recovery exclusion. Four of the five requested additional property packages succeeded; change-durability/binding has concrete counterexamples. These are local source-execution proofs, not end-to-end proofs of the top-level security promises.
+The proof inventory below is covered by the integrated Agda entrypoint check. Change-description durability and encryption binding are not established, and the pinned implementation admits concrete counterexamples. The checked results are local source-execution proofs, not end-to-end proofs of the top-level security promises.
 
 ## Proof inventory
 
@@ -15,6 +15,14 @@ The generic [symbolic signing](../src/Midnight/ContractDSL/SymbolicSigningProper
 ### Device authorization and bootstrap
 
 [Device proofs](../src/Conformance/FullAccountDeviceSecurityProperties.agda) derive live entry membership, signature verification, entry rolling and bounded nonce/round advancement from successful source executions. Bootstrap instead requires the unconsumed boot commitment, and the immediate replay result identifies a necessary challenge collision rather than proving universal signature non-replay.
+
+### Immediate device replay refusal
+
+The [device replay proofs](../src/Conformance/FullAccountDeviceSecurityProperties.agda) show that a successful device call whose body preserves the device set cannot be repeated verbatim from its final state, provided its current and rolled entries differ. At that state the same account identity and decoded authentication arguments cannot authorize even a different challenge; this does not cover intervening histories or establish hash separation or ledger-adoption safety.
+
+### Ordinary device removal
+
+The [removal proofs](../src/Passport/DeviceRemovalProperties.agda) extract the source guards and exact removal/count effects, then show that the removed literal entry stays absent until an actual subsequent introduction and cannot authorize a call through that opening before then. Reintroduction includes activation, rolling, enrolment and recovery successors; other openings for the same key may remain live, so this is not a permanent-key ban or ledger-adoption theorem.
 
 ### Grant authorization and settlement
 
@@ -52,7 +60,7 @@ The generic [symbolic signing](../src/Midnight/ContractDSL/SymbolicSigningProper
 
 [Outsider-history proofs](../src/Passport/OutsiderPreservationProperties.agda) show that accepted permissionless deposits and refused attempts preserve stored authority/recovery resources and enrolled device membership. They account exactly for deposit round consumption and explicitly exclude successful bootstrap and finalisation, so they are not availability or liveness proofs.
 
-## Missing or unfinished obligations
+## Remaining assurance obligations
 
 ### Concrete cryptographic realization
 
@@ -90,11 +98,11 @@ The checked source target is fixed; these proofs do not cover code upgrades or p
 
 ### Signed ciphertext need not describe the change
 
-Native probes accepted authorized grant withdrawals whose supplied ciphertext described the wrong change or was encrypted to another real key, despite a matching separately supplied `enc_pk`. Signature coverage and atomic append therefore do not establish description/encryption binding against an authorized delegate.
+Native execution demonstrates that authorized grant withdrawals accept supplied ciphertext describing the wrong change or encrypted to another real key, despite a matching separately supplied `enc_pk`. Signature coverage and atomic append therefore do not establish description/encryption binding against an authorized delegate.
 
 ### Device change recording has a transaction gap
 
-The examined device path returns change before a separate inbox-backfill submission. No crash-safe protocol was found in that examined path at the pinned source; this is not an impossibility proof for a different recovery protocol.
+The examined device path returns change before a separate inbox-backfill submission. Crash-safe recording is not established for that path at the pinned source; this is not an impossibility claim about a different recovery protocol.
 
 ### Structural preservation has a finite cost
 
@@ -106,8 +114,4 @@ The checked results permit explicit old-key re-enrolment and same-id grant reiss
 
 ### Execution evidence is broader than a proof of refinement
 
-The full native/model comparison covered all 53 entrypoints with 225 observations and no mismatches, alongside focused property probes. These are exercised correspondence checks, not a universal compiler-refinement theorem, ZK proof or on-chain inclusion result.
-
-### Unsuccessful work is retained
-
-The failed durability/binding candidate remains on `feat/passport-properties-change-durability` in `.worktrees/passport-properties-change-durability`, with a runnable probe and 123 captured observations. No weaker append-only result is substituted for the requested property.
+Current native/model correspondence evidence covers all 53 entrypoints with 225 observations and no mismatches, alongside focused property probes. These are exercised correspondence checks, not a universal compiler-refinement theorem, ZK proof or on-chain inclusion result.
