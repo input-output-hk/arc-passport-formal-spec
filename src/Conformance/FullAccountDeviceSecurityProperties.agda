@@ -90,6 +90,32 @@ no-device-call-at-deployment = Proof.no-device-call-at-deployment
 ------------------------------------------------------------------------
 -- Replay boundary
 
+-- All device operations except addDevice/removeDevice have this body frame:
+-- withdrawals (all three forms), appendInbox, rotateEncKey, issueGrant,
+-- revokeGrant, revokeAllGrants, publishRecovery and cancelRecovery.
+-- The separation premise concerns the actual hashed entries, not just counters.
+-- No hash injectivity or signature-security assumption discharges it here.
+-- From the first successful source run, its old entry remains absent in the
+-- final state, so a verbatim repeat cannot pass live-membership authorisation.
+exact-device-replay-refused : ∀ c op ctx xs {s y t}
+  (first : Run (deviceCall c op ctx xs) s y t) →
+  All (λ label → stringEqual "devices" label ≡ false) (bodyWrites op) →
+  equal (Authorisation.current (DeviceCall.authorised (device-call-evidence c op ctx xs first)))
+    (DeviceCall.rolledEntry (device-call-evidence c op ctx xs first)) ≡ false →
+  ∀ {result after} → ¬ Run (deviceCall c op ctx xs) t result after
+exact-device-replay-refused = Proof.exact-device-replay-refused
+
+-- Stronger boundary: at that final state no authorisation with the same
+-- account address and decoded authentication arguments succeeds, even for a
+-- different challenge or context's other fields. No intervening call is covered.
+consumed-credentials-refused : ∀ c op {ctx xs s y t}
+  (first : DeviceCall c op ctx xs s y t) →
+  All (λ label → stringEqual "devices" label ≡ false) (bodyWrites op) →
+  equal (Authorisation.current (DeviceCall.authorised first)) (DeviceCall.rolledEntry first) ≡ false →
+  ∀ {ctx′ a h next u} → self ctx′ ≡ self ctx → a ≡ deviceAuth c op xs →
+  ¬ Authorisation c ctx′ a h t next u
+consumed-credentials-refused = Proof.consumed-credentials-refused
+
 -- Same curve and operation, different account or stored nonce: the two
 -- challenges hash distinct typed preimages, so equal challenge values exhibit a
 -- persistentHash collision. This does not say a signature cannot be presented
