@@ -146,6 +146,28 @@ appropriate opening agreement to identify intended keys and policies;
 `cumulative-spend` takes agreement for the two relevant spent openings, not a
 global injectivity axiom.
 
+The [`semantic scope statements`](../src/Conformance/FullAccountGrantScopeProperties.agda)
+connect accepted typed runtime withdrawals to an intended policy witnessed by
+openings of the actual stored grant's object and caller commitments.
+Relevant-pair opening agreement yields the intended asset/color, recipient
+kind/address and whole-held-coin maximum; a pinned caller must be the observed
+immediate contract caller. Zero recipient kind and the zero caller commitment
+mean unrestricted policies. The caller commitment's reserved-zero check
+separates a pinned caller from that unrestricted sentinel. These conclusions
+assume agreement only for the relevant object/caller openings, not global hash
+injectivity, authenticated coin ownership or ledger adoption.
+
+The [`grant confinement statements`](../src/Passport/GrantConfinementProperties.agda)
+derive preservation of every ledger cell except grants, round, unshielded
+balances, inbox and inbox count. Successful grant withdrawals preserve device
+enrolment, recovery configuration/pending records, encryption keys and account
+authority counters; finite grant-withdrawal/refusal histories preserve that
+authority frame. Each accepted withdrawal preserves other grant records under
+explicit identifier separation and preserves its own issuance identity and
+scope while settling its nonce/spent commitment. No cryptographic binding
+premise is needed for these structural facts, but they do not establish correct
+change recording, availability or protection from all forms of griefing.
+
 The [`whole-history spending statements`](../src/Passport/GrantSpendingProperties.agda)
 now prove that every current or archived issuance episode stays within its cap,
 and that its stored commitment and nonce match accumulated accepted spending.
@@ -158,6 +180,28 @@ This is the contract-level counterpart of P7's issuance-scoped cumulative
 allowance (I-7.8), not a per-operation cap or rate limit. Fresh issuance requires
 account authorization; it starts a separately bounded episode rather than
 resetting the accounting of the previous issuance.
+
+The [`grant replay statements`](../src/Passport/GrantReplayProperties.agda)
+derive retained issuance identity and strictly increasing nonce between actual
+accepted spends with the same identifier and no intervening accepted reissue.
+The intervening history may contain arbitrary runtime calls and refusals;
+accepted zero-value spends are included without amount-positivity or
+spent-opening-binding premises. Source requests therefore differ in nonce.
+
+At the ideal-signing level, the old token cannot equal the later required token
+under `RelevantRequestBinding`: equal final source encodings for this relevant
+key/request pair must imply equal nonce views. Tokens remain available, and
+fresh authorized signing remains permitted. Existing signing provenance
+additionally traces a later available token to attacker control or approved
+honest issuance with the later nonce view, under trace-scoped `IssuedAgreement`.
+
+Exclusion of repeated concrete signature material needs the separate
+`SignatureTokenInterpretation` law: successful reuse of that key/signature pair
+must realize equal exact-message encodings. This is an external relevant-pair
+realization premise, not a consequence of the symbolic model. Schnorr scalar
+reduction, ECDSA digest reduction/multiple verifying messages, and envelope or
+WebAuthn equivalences remain obligations; neither unconditional byte-signature
+replay security nor ledger adoption is established.
 
 The [`revocation history statements`](../src/Passport/RevocationExclusionProperties.agda)
 derive nondecreasing authorization nonce, device epoch and grant generation,

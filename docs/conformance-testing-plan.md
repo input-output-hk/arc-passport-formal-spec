@@ -280,6 +280,42 @@ actual introduction occurrence; other openings for the same key may remain live.
 Both smokes used the pinned implementation and production signing/witness
 fixtures; neither is an Agda/native comparison, ZK proof or ledger-adoption proof.
 
+Semantic grant-scope smoke exercised 120 production-runtime calls (75 accepted,
+45 refused) across all three schemes and withdrawals, with no native/model
+outcome mismatches or primitive failures. Cases covered intended recipient
+pins, wrong assets/recipients, altered kind/maximum openings, oversized shielded
+coins, unrestricted policies and refusal of an absent external caller under
+a pinned-caller policy. Accepted transcripts and formal VM stacks matched.
+The runtime context API did not supply a present contract caller: successful
+pinned-caller and wrong-present-address transactions were not exercised.
+
+Grant-confinement smoke exercised nine accepted withdrawals and nine replay
+refusals across all schemes and withdrawal classes. Each account had two
+devices, published and pending recovery, and two grants; all 19 authority cells,
+the other grant and the executing grant's authority fields were preserved.
+Nonce/spent and round advanced, public balance debits or shielded input/output
+effects occurred, and shielded change appended to the inbox. All nine accepted
+withdrawal transcripts matched the formal VM; refusal states rolled back.
+These finite pinned-runtime checks support the
+[`scope`](../src/Conformance/FullAccountGrantScopeProperties.agda) and
+[`confinement`](../src/Passport/GrantConfinementProperties.agda) statements,
+not universal refinement, ZK verification or ledger adoption.
+
+Historical grant-replay smoke exercised 54 calls (42 accepted, 12 refused)
+using production runtime/signers, the model harness and independent formal VM.
+For each scheme, positive and zero-value unshielded grant withdrawals were
+accepted, followed by a deposit and a freshly signed spend, then refused
+replays of the original request and of its signature with the current spent
+opening. Zero-value spends advanced nonce from 0 to 1 to 2. Outcomes, accepted
+ledgers, checked assertion messages and VM stacks had no recorded divergence.
+Positive identical replay failed the spent-opening check; with a current
+opening the old signature failed verification. Zero-value k256/P256 replay
+failed signature verification; jubjub hit the challenge Field-range guard
+before the signature equation. These are refusal observations, not evidence
+that every replay reaches the signature assertion or that the
+[`replay theorem`](../src/Passport/GrantReplayProperties.agda)'s concrete
+signature-token realization premise has been established.
+
 ### Local history invariants
 
 [`GrantEffectsProperties`](../src/Passport/GrantEffectsProperties.agda) extracts
