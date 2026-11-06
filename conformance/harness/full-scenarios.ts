@@ -111,7 +111,7 @@ export async function fullScenarios(impl: FullImplementation, formalVM: FormalVM
     const grantId = invoke(grantee, 'grantId', account.address, origin, 0n), grantSalt = rnd();
     const scope = record(invoke(impl.signer, 'spendScope', {
       withdrawUnshielded: true, withdrawShielded: true, withdrawShieldedToContract: true,
-      color, cap: 100n, perCallCap: 20n, maxCoinValue: 20n, readPkHash: rnd(),
+      color, cap: 31n, perCallCap: 20n, maxCoinValue: 20n, readPkHash: rnd(),
       ...(arm === 'p256' ? { rpIdHash: record(grantee.policy).rp_id_hash } : {}),
     }));
     const scopeFields = array(invoke(impl.signer, 'scopeArgs', scope));
@@ -137,6 +137,18 @@ export async function fullScenarios(impl: FullImplementation, formalVM: FormalVM
       if (result.outcome.tag === 'accepted') opening = { ...opening, spentPrev: BigInt(String(opening.spentPrev)) + amount };
       return [...args, ...auth];
     };
+    const beforeZero = grantRecord().nonce;
+    const zeroSpend = await spendGrant('grant zero spend', 'withdraw_unshielded', 'withdrawUnshielded',
+      [color, 0n, recipient], [color, 0n, { bytes: recipient }], 0n);
+    if (grantRecord().nonce !== BigInt(String(beforeZero)) + 1n || BigInt(String(opening.spentPrev)) !== 0n)
+      throw new Error(`${arm}: zero spend must advance nonce without charging the issuance`);
+    await spendGrant('grant wrong asset refusal', 'withdraw_unshielded', 'withdrawUnshielded',
+      [unknown, 0n, recipient], [unknown, 0n, { bytes: recipient }], 0n, 'rejected');
+    const interveningKey = rnd();
+    await gated('device call between grant zero and replay', 'rotate_enc_key', 'rotateEncKey',
+      [interveningKey], [interveningKey]);
+    await run(account, prefix('grant zero replay after refusal and device call'),
+      `withdraw_unshielded_with_grant_${arm}`, zeroSpend, 'rejected');
     const firstSpend = await spendGrant('grant unshielded spend', 'withdraw_unshielded', 'withdrawUnshielded', [color, 3n, recipient], [color, 3n, { bytes: recipient }], 3n);
     await run(account, prefix('grant spent-opening replay'), `withdraw_unshielded_with_grant_${arm}`, firstSpend, 'rejected');
     await spendGrant('grant per-call cap refusal', 'withdraw_unshielded', 'withdrawUnshielded', [color, 21n, recipient], [color, 21n, { bytes: recipient }], 21n, 'rejected');
@@ -152,10 +164,17 @@ export async function fullScenarios(impl: FullImplementation, formalVM: FormalVM
       await spendGrant(`grant ${operation} exact`, operation, builder, [recipient, color, 10n, changeEntry, encKey, full],
         [{ bytes: recipient }, color, 10n, changeEntry, encKey], 10n);
     }
+    if (BigInt(String(opening.spentPrev)) !== 31n)
+      throw new Error(`${arm}: accepted grant withdrawals must exactly exhaust this issuance's cap`);
+    await spendGrant('grant cumulative cap refusal', 'withdraw_unshielded', 'withdrawUnshielded',
+      [color, 1n, recipient], [color, 1n, { bytes: recipient }], 1n, 'rejected');
     await gated('revoke grant', 'revoke_grant', 'revokeGrant', [grantId], [grantId]);
     await spendGrant('revoked grant refusal', 'withdraw_unshielded', 'withdrawUnshielded', [color, 1n, recipient], [color, 1n, { bytes: recipient }], 1n, 'rejected');
     await gated('revoke unknown grant', 'revoke_grant', 'revokeGrant', [unknown], [unknown], 'rejected');
     await gated('reissue tombstone', 'issue_grant', 'issueGrant', [grantId, digest], [grantId, ...scopeFields, grantSalt]);
+    opening = record(invoke(impl.signer, 'openingOf', scope, grantSalt, origin, 0n));
+    await spendGrant('grant fresh spend after same-id reissue', 'withdraw_unshielded', 'withdrawUnshielded',
+      [color, 1n, recipient], [color, 1n, { bytes: recipient }], 1n);
     const revokedAll = await gated('revoke all grants', 'revoke_all_grants', 'revokeAllGrants', [], []);
     await run(account, prefix('revoke all replay'), `revoke_all_grants_with_${arm}`, revokedAll.args, 'rejected');
     await run(account, prefix('cleared grant after revoke all'), `withdraw_unshielded_with_grant_${arm}`, firstSpend, 'rejected');
