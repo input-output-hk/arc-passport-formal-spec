@@ -75,6 +75,17 @@ equation. Rejection atomicity follows from `transaction` returning the original
 state. These structural results are not evidence for circuit-specific invariants
 or for the compiled implementation's transaction semantics.
 
+The [ledger-adoption boundary](ledger-adoption-boundary.md) specifies a complete
+source-call/segment projection and unverified context, asset, ordering,
+partial-application and finality obligations. Its
+[native scenario](../conformance/harness/ledger-adoption-smoke.mjs) and
+[recorded evidence](../conformance/ledger-adoption-evidence.json) exercise the
+generated constructor/deposits and real ledger-v9 VM replay/partitioner:
+sequential states match, stale ordering is refused, and host-supplied context
+remains unauthenticated. Both observed deposit transcripts are entirely
+guaranteed; no fallible partial application, proof verification or ledger
+inclusion was exercised.
+
 ### Deployment-rooted local histories
 
 [`Lifecycle`](../src/Midnight/ContractDSL/Lifecycle.agda) is a universe-polymorphic
@@ -342,6 +353,16 @@ verbatim replay. The same key/signature verified distinct raw digests,
 including distinct reduced ECDSA digests; no corresponding source-request
 preimages or Passport replay were demonstrated. Full constructions and
 boundaries are in the [audit's executed evidence](cryptographic-assumptions-audit.md#executed-evidence).
+
+The [commitment-binding audit](commitment-binding-audit.md#executed-native-evidence)
+records 66 native boundary observations: 36 digest agreements, 25 expected
+rejections and five normalization/ambiguity/domain observations. A source-literal
+inventory checks all 61 application prefixes for distinctness and independently
+recomputes all 46 hashed prefixes. These probes exercise canonical widths,
+endianness/ranges, caller absence, nested commitments and generic encoding
+ambiguity, not universal serializer correctness or ledger admission.
+The exact executable and output are retained externally; the audit states
+the reproduction limits of its documentation-only commit.
 
 ### Local history invariants
 

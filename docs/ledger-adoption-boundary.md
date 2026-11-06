@@ -19,6 +19,9 @@ and the [cryptographic audit](cryptographic-assumptions-audit.md) explain the
 separate execution and cryptographic boundaries. The executable evidence for
 this document is [ledger-adoption-smoke.mjs](../conformance/harness/ledger-adoption-smoke.mjs)
 and its [recorded result](../conformance/ledger-adoption-evidence.json).
+The [commitment-binding audit](commitment-binding-audit.md) separately identifies
+canonical encoding and opening-agreement obligations; authenticated context
+does not discharge them.
 
 The intended claim is deliberately narrow: **a fully applied Passport call,
 placed in a deployment-rooted, correctly ordered source history, inherits the

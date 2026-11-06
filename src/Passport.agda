@@ -7,6 +7,8 @@ module Passport where
 -- The older recovery theorem route is described in docs/conformance-recovery.md.
 -- Cryptographic premise inventory and native realization limits:
 -- docs/cryptographic-assumptions-audit.md.
+-- Native commitment encoding and candidate ledger-adoption obligations:
+-- docs/commitment-binding-audit.md; docs/ledger-adoption-boundary.md.
 
 -- A. Full pinned-main account: transition wrapper, then its semantic definitions.
 -- This is local source execution, not certified delayed ledger admission.
