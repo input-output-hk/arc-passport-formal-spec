@@ -82,9 +82,13 @@ The [grant replay proofs](../src/Passport/GrantReplayProperties.agda) derive str
 
 The [assumption audit](cryptographic-assumptions-audit.md) inventories symbolic availability, trace-view agreement, relevant-opening binding and signature-token interpretation without establishing a joint native realization. Native verifier digest ambiguities must be addressed by a source-request-aware realization argument; composing conditional proofs does not discharge these premises.
 
+### Commitment serialization and binding
+
+The [commitment audit](commitment-binding-audit.md) gives canonical fixed-layout encoding arguments and native boundary evidence for the relevant opening premises, including all 61 application domain prefixes. Universal native serializer correspondence and collision/second-preimage reductions remain unproved; omitted fields, wildcard semantics and context authenticity need separate arguments.
+
 ### Ledger adoption and transaction safety
 
-Local source acceptance is not proof that an authenticated ledger adopts exactly the modeled effects under its actual context and asset rules. Completing top-level P11 needs that bridge, including the relevant authority, binding and replay guarantees at adoption.
+The [ledger-adoption boundary](ledger-adoption-boundary.md) specifies complete source-call projection, authenticated context/assets, ordering, partial effects and finality, with six candidate platform obligations that are neither approved nor discharged. A deployment-rooted projection cannot omit state-changing partial prefixes; native VM replay/ordering evidence does not establish that projection or top-level P11.
 
 ### Snapshot-aware reporting
 
@@ -131,6 +135,10 @@ The checked results permit explicit old-key re-enrolment and same-id grant reiss
 ### Signature material does not identify one raw digest
 
 The [native cryptographic audit](cryptographic-assumptions-audit.md#executed-evidence) demonstrates identical key/signature material verifying multiple raw digests in all three schemes, including distinct reduced ECDSA digests. These primitive-boundary witnesses refute universal exact-digest uniqueness, not source-request binding or Passport replay security: no matching source-request preimages or accepted replay were constructed.
+
+### Typed preimages need a canonical layout
+
+The [commitment probes](commitment-binding-audit.md#executed-native-evidence) show that different generic typed-atom lists can encode the same bytes and that low-level byte descriptors accept padding which the public circuit ABI rejects. These are encoding-boundary observations, not SHA-256 collisions or Passport exploits; binding arguments must restrict inputs to the validated layout.
 
 ### Execution evidence is broader than a proof of refinement
 

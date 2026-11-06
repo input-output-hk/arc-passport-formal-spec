@@ -269,7 +269,7 @@ user's identity, or authenticate an entire call stack. Likewise expiry and
 recovery time bounds depend on ledger-authenticated time semantics; a qualified
 coin opening does not prove the witness coin belongs to the adopted input set.
 
-The companion `docs/ledger-adoption-boundary.md` specification separates
+The companion [ledger-adoption boundary](ledger-adoption-boundary.md) separates
 code/deployment identity, compiler/proof transcript correspondence, current-state replay/order,
 authenticated self/caller/time, native asset/effect reconciliation and rollback,
 and finality/read-provider authentication. These obligations do not discharge

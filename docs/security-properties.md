@@ -151,6 +151,13 @@ Neither source acceptance alone nor the composition supplies those symbolic
 premises. Cryptographic realization, ledger admission/adoption, authenticated
 value/effect correspondence and arbitrary-history device replay remain open.
 
+The [ledger-adoption boundary](ledger-adoption-boundary.md) specifies the missing
+source-call/segment correspondence. A deployment-rooted projection must cover
+every relevant committed account mutation, including any state-changing partial
+prefix; selecting only fully successful calls cannot erase such predecessors.
+Its compiler, proof-system, context, asset, ordering and finality obligations are
+candidates for justification or explicit trust, not approved assumptions.
+
 **Checked local contract evidence:** the
 [`device statements`](../src/Conformance/FullAccountDeviceSecurityProperties.agda)
 derive live entry membership, verification, entry rolling and bounded nonce/round
@@ -176,6 +183,14 @@ mean unrestricted policies. The caller commitment's reserved-zero check
 separates a pinned caller from that unrestricted sentinel. These conclusions
 assume agreement only for the relevant object/caller openings, not global hash
 injectivity, authenticated coin ownership or ledger adoption.
+
+The [commitment-binding audit](commitment-binding-audit.md) inventories fixed
+native preimages and canonical domains for the relevant opening agreements.
+Distinct included fields can yield a distinct-byte collision witness only after
+establishing canonical per-layout serialization; generic typed-atom inequality
+does not imply different bytes. The audit supplies inspected layout arguments
+and finite native boundary evidence, not a universal serializer proof,
+computational reduction or authentication of ledger inputs.
 
 The [`grant confinement statements`](../src/Passport/GrantConfinementProperties.agda)
 derive preservation of every ledger cell except grants, round, unshielded
