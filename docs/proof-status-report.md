@@ -8,6 +8,10 @@ The proof inventory below is covered by the integrated Agda entrypoint check. Ch
 
 ## Proof inventory
 
+### Composed local transaction safety
+
+The [transaction-safety theorem](../src/Passport/TransactionSafetyProperties.agda) classifies actual accepted runtime withdrawals into device/grant authorization, retains the exact source request and enforces intended grant scope plus the issuance cap including the current spend under explicit opening-agreement premises. It composes immediate device and historical symbolic-grant replay guarantees at their distinct boundaries, with exact-request provenance conditional on same-history token availability and trace agreement; cryptographic realization and ledger-adoption P11 remain open.
+
 ### Symbolic signature provenance
 
 The generic [symbolic signing](../src/Midnight/ContractDSL/SymbolicSigningProperties.agda) and [adversarial-history](../src/Midnight/ContractDSL/AdversarialLifecycleProperties.agda) proofs trace available tokens to attacker-controlled keys or approved honest issuance, with request-level provenance conditional on relevant encoding agreement. The [source binding](../src/Conformance/FullAccountSignatureBindingProperties.agda) and [account dispatcher bridge](../src/Passport/AccountRequestDispatchProperties.agda) connect this model to actual request extraction, but do not prove concrete cryptographic security or human consent.
@@ -76,7 +80,7 @@ The [grant replay proofs](../src/Passport/GrantReplayProperties.agda) derive str
 
 ### Concrete cryptographic realization
 
-We still need assumptions and realization arguments connecting real signature/hash operations to the ideal signing model and relevant-opening agreements. Effective-digest equivalences, including signature-scheme reductions, must be addressed rather than assuming raw digest or signature-byte uniqueness.
+The [assumption audit](cryptographic-assumptions-audit.md) inventories symbolic availability, trace-view agreement, relevant-opening binding and signature-token interpretation without establishing a joint native realization. Native verifier digest ambiguities must be addressed by a source-request-aware realization argument; composing conditional proofs does not discharge these premises.
 
 ### Ledger adoption and transaction safety
 
@@ -124,6 +128,10 @@ Permissionless deposits preserve authority records but consume the finite round 
 
 The checked results permit explicit old-key re-enrolment and same-id grant reissue. An unconditional permanent-ban formulation would exclude supported authorization paths, so the theorems track those actual occurrences.
 
+### Signature material does not identify one raw digest
+
+The [native cryptographic audit](cryptographic-assumptions-audit.md#executed-evidence) demonstrates identical key/signature material verifying multiple raw digests in all three schemes, including distinct reduced ECDSA digests. These primitive-boundary witnesses refute universal exact-digest uniqueness, not source-request binding or Passport replay security: no matching source-request preimages or accepted replay were constructed.
+
 ### Execution evidence is broader than a proof of refinement
 
-Current native/model correspondence evidence covers all 53 entrypoints with 225 observations and no mismatches, alongside focused property probes. These are exercised correspondence checks, not a universal compiler-refinement theorem, ZK proof or on-chain inclusion result.
+Current native/model correspondence evidence covers all 53 entrypoints with 243 observations and no mismatches, including all 18 withdrawal branches and zero-spend, cumulative-cap and reissuance boundaries. These are exercised correspondence checks, not a universal compiler-refinement theorem, ZK proof or on-chain inclusion result.

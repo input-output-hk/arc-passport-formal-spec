@@ -248,16 +248,35 @@ asset or recipient additionally requires agreement of the relevant openings.
 Those interpretations are not consequences of the numerical cap guards or of
 signature provenance alone.
 
+#### Composed local transaction safety
+
+[`TransactionSafetyProperties`](../src/Passport/TransactionSafetyProperties.agda)
+classifies actual committed withdrawals from deployment-rooted history into
+device/grant authorization across all schemes and destinations. Its result
+retains the exact encoded dispatcher request; the grant branch adds intended
+semantic scope and the historical issuance cap including the current spend.
+Policy-opening, relevant-opening and historical/current spent-opening
+premises remain distinct. The device replay boundary is immediate consumed
+credentials under entry separation; the grant boundary is historical
+same-issuance symbolic tokens under relevant request binding.
+
+The exact-request provenance corollary uses the same joint signing/contract
+history, required-token availability and identity-view trace agreement.
+The [cryptographic audit](cryptographic-assumptions-audit.md) inventories these
+premises and demonstrates native digest ambiguities; it does not supply their
+realization. Composition is not a ledger-adoption or unconditional replay proof.
+
 #### Native execution evidence
 
-A compiled native authorization audit exercised **231 calls**: the existing 225
-conformance fixtures plus six represented-state cumulative-cap boundaries
+A compiled native authorization audit exercised **231 calls**: a 225-fixture
+conformance corpus plus six represented-state cumulative-cap boundaries
 (equality and one above, for each curve). All **147 extracted signature tokens**
 matched successful native verification equations or ECDSA checks over their
 source-computed digests; complete outcomes, states and effects matched the fixtures.
 The six added cap cases are synthetic represented states, not claimed reachable
-grant histories. The audit made 3,437 primitive calls. A fresh full correspondence
-run separately covered all 53 entrypoints with 225 observations and zero mismatches.
+grant histories. The audit made 3,437 primitive calls. The current full
+correspondence corpus separately covers all 53 entrypoints with 243 observations
+and zero mismatches; its totals are recorded below.
 
 These results do not authenticate environment time, callers or coin witnesses,
 establish guardian consent, model human approval, prove fairness, or bridge local
@@ -315,6 +334,14 @@ before the signature equation. These are refusal observations, not evidence
 that every replay reaches the signature assertion or that the
 [`replay theorem`](../src/Passport/GrantReplayProperties.agda)'s concrete
 signature-token realization premise has been established.
+
+The cryptographic audit exercised eight positive native primitive/equation
+observations, valid k256 and WebAuthn wrapper controls, a changed-WebAuthn-
+challenge rejection, and an actual signed device call followed by refused
+verbatim replay. The same key/signature verified distinct raw digests,
+including distinct reduced ECDSA digests; no corresponding source-request
+preimages or Passport replay were demonstrated. Full constructions and
+boundaries are in the [audit's executed evidence](cryptographic-assumptions-audit.md#executed-evidence).
 
 ### Local history invariants
 
@@ -397,14 +424,20 @@ The integrated run of the working tree reported:
 | Measure | Result |
 |---|---:|
 | Constructor and impure circuits | 53 |
-| Concrete/model observations | 225 |
+| Concrete/model observations | 243 |
 | Entrypoints missing successful or refused cases | 0 |
 | Divergent observations | 0 |
-| Fine-grained primitive calls | 1684 |
+| Fine-grained primitive calls | 1848 |
 
 Cases cover bootstrap, all three authentication arms, device lifecycle, inbox,
 unshielded custody, shielded exact/change sends to keys and contracts, grant
 issuance/revocation/generation/expiry, recovery and post-recovery old authority.
+All 18 scheme × authorization × withdrawal-destination branches have accepted
+and refused cases. The 129 accepted and 114 refused observations include, for
+each scheme, a zero grant spend advancing nonce without changing spent total,
+wrong-asset refusal, intervening device activity before zero-spend replay
+refusal, cumulative-cap refusal after exactly 31 units of historical spending,
+and a fresh spend after same-id tombstone reissuance.
 Maximum-epoch/use-counter cases are explicitly synthetic represented states,
 not claimed to have been reached by executing billions of transitions.
 The JSON report records actual calls, signatures, witnesses, states, effects
