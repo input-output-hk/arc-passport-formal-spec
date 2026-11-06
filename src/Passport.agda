@@ -5,6 +5,8 @@ module Passport where
 -- Reader entry point. Full-account correspondence scope and execution evidence:
 -- docs/conformance-testing-plan.md#pinned-main-full-account-execution.
 -- The older recovery theorem route is described in docs/conformance-recovery.md.
+-- Cryptographic premise inventory and native realization limits:
+-- docs/cryptographic-assumptions-audit.md.
 
 -- A. Full pinned-main account: transition wrapper, then its semantic definitions.
 -- This is local source execution, not certified delayed ledger admission.
@@ -71,6 +73,9 @@ import Passport.GrantSpendingProperties
 -- Same-issuance historical replay exclusion under explicit binding premises.
 import Passport.GrantReplay
 import Passport.GrantReplayProperties
+-- Composed local withdrawal safety, with distinct device/grant replay bounds.
+import Passport.TransactionSafety
+import Passport.TransactionSafetyProperties
 -- Actual revocation/recovery boundaries and reauthorization occurrences.
 -- Device exclusion additionally requires relevant-entry separation.
 import Passport.RevocationExclusion
@@ -149,6 +154,7 @@ import Passport.AccountRecoveryOccurrenceProof
 import Passport.GrantEffectsProof
 import Passport.GrantSpendingProof
 import Passport.GrantReplayProof
+import Passport.TransactionSafetyProof
 import Passport.RevocationExclusionProof
 import Passport.DeviceRemovalProof
 import Passport.UnshieldedAccountingProof

@@ -131,6 +131,26 @@ cryptographic and compromise assumptions, not exclusive production of signature
 bytes: the [ECDSA policy](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/docs/mps-mip/mips/mip-xxxx-signature-schemes.md#L238-L246)
 accepts both `(r, s)` and `(r, n−s)` for the same single execution.
 
+**Composed local P11 component:** [`transaction-safety`](../src/Passport/TransactionSafetyProperties.agda)
+classifies an actual committed runtime withdrawal following deployment-rooted
+history into the device or grant branch, covering all schemes and destinations.
+It derives live source authorization, the encoded request and its equality
+with the dispatcher's singleton `signedRequests`. The grant branch additionally
+enforces the witnessed intended policy and bounds the actual issuance episode's
+historical total **including this withdrawal** by its cap. Policy openings,
+relevant object/caller agreement, historical spent-opening agreement and the
+current spend's opening agreement remain separate explicit premises.
+
+The composition retains different replay boundaries: immediate device
+consumed-credentials refusal under actual entry separation, versus historical
+same-issuance grant-token exclusion under relevant request binding. Its
+`safe-request-provenance` corollary uses the same joint history's contract
+projection, available required tokens and identity-view trace agreement to
+derive attacker control or approved honest signing of the exact request.
+Neither source acceptance alone nor the composition supplies those symbolic
+premises. Cryptographic realization, ledger admission/adoption, authenticated
+value/effect correspondence and arbitrary-history device replay remain open.
+
 **Checked local contract evidence:** the
 [`device statements`](../src/Conformance/FullAccountDeviceSecurityProperties.agda)
 derive live entry membership, verification, entry rolling and bounded nonce/round
@@ -202,6 +222,15 @@ realization premise, not a consequence of the symbolic model. Schnorr scalar
 reduction, ECDSA digest reduction/multiple verifying messages, and envelope or
 WebAuthn equivalences remain obligations; neither unconditional byte-signature
 replay security nor ledger adoption is established.
+
+The [cryptographic assumptions audit](cryptographic-assumptions-audit.md)
+demonstrates why the byte-signature interpretation is not a universal native
+law: identical key/signature material verifies distinct raw digests for all
+three schemes, including distinct reduced ECDSA digests. The witnesses do not
+construct source-request preimages or a Passport replay. On an already
+nonce-separated spend pair, relevant request binding is equivalent to exact
+token separation; that premise and the signature-token law require independent
+realization evidence rather than providing a cryptographic reduction themselves.
 
 The [`revocation history statements`](../src/Passport/RevocationExclusionProperties.agda)
 derive nondecreasing authorization nonce, device epoch and grant generation,
