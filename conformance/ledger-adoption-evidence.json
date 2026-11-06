@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "date": "2026-11-06",
+  "scope": "Native generated Passport circuit and ledger-v9 QueryContext/partitionTranscripts; not ledger adoption",
+  "command": "node --import /Users/andre/IOHK/arc-passport/.worktrees/formal-correspondence-main/contract/node_modules/tsx/dist/loader.mjs conformance/harness/ledger-adoption-smoke.mjs",
+  "exitCode": 0,
+  "implementationRevision": "fc19e471536febb2133f20e817847251622dcdf5",
+  "formalBase": "b87ccbeb556ace4b28265f49f0310c384f287451",
+  "versions": {
+    "node": "v22.22.1",
+    "compiler": "0.35.0",
+    "compilerCommit": "debb05f9414b9d1e176741c2be289bb32233f0fc",
+    "compactRuntime": "0.20.0",
+    "onchainRuntimeV4": "4.0.0-rc.3",
+    "ledgerV9": "1.0.0-rc.5",
+    "midnightJsContracts": "5.0.0-rc.2"
+  },
+  "sha256": {
+    "node_modules/@midnightntwrk/ledger-v9/ledger-v9.d.ts": "6fa8f901365f2a4975c432a669034d67b7173d5a488e7bef2090abb2bd26035d",
+    "node_modules/@midnightntwrk/ledger-v9/midnight_ledger_wasm_v9_bg.wasm": "41204f5f7ea5931a2debef32065cc97837aacaf95c91591b1fe5f38e0f148d58",
+    "node_modules/@midnight-ntwrk/midnight-js-contracts/dist/index.js": "16a0f7566e9b27761cb34f256f005c7e8e757689bf273358d588b5c71ff26d7e",
+    "node_modules/@midnight-ntwrk/compact-runtime/dist/circuit-context.js": "3ff9274b45abb3426f77db2e6741bd1ebcb5b2138af71482d2a76509ef373b74"
+  },
+  "observations": {
+    "generatedSurface": ["constructor", "deposit_unshielded"],
+    "sequentialDeposits": ["7", "11"],
+    "rounds": ["0", "1", "2"],
+    "modeledUnshieldedBalances": ["0", "7", "18"],
+    "fullNativeStateComparisons": 2,
+    "transcriptOperationCounts": [34, 38],
+    "nativePartitionOperationCounts": [[34, null], [38, null]],
+    "nativeUnshieldedInputClaims": ["7", "11"],
+    "staleFirstTranscriptOnSuccessor": "Error: mismatch between expected (<[-]: b1>) and actual (<[01]: b1>) read",
+    "secondTranscriptOnOriginalPredecessor": "Error: mismatch between expected (<[01]: b1>) and actual (<[-]: b1>) read",
+    "hostSuppliedCallerAcceptedByContextConstructor": {"tag": "contract", "address": "2222222222222222222222222222222222222222222222222222222222222222"},
+    "hostSuppliedTimeAcceptedByContextConstructor": "1800000999",
+    "overflow": "CompactError: account.compact line 924 char 8: cast from Field or Uint value to smaller Uint value failed: 340282366920938463463374607431768211462 is greater than 340282366920938463463374607431768211455",
+    "overflowPredecessorStateUnchanged": true
+  },
+  "environmentProbes": {
+    "localhostPorts": {"9944": "connection refused", "8088": "connection refused", "6300": "connection refused"},
+    "dockerPs": {"exitCode": 0, "runningContainers": []},
+    "npmPrimaryMetadata": "https://registry.npmjs.org/@midnightntwrk/ledger-v9/1.0.0-rc.5",
+    "npmGitHead": null,
+    "npmIntegrity": "sha512-xd2RDJ7UiJha9c0YA92DYof/eGW6NKBFhQxoCggzyrdYm2KWuE/u4wlv/WRP2/Hvol1O8ymOVatKquGXYBgV9w==",
+    "githubSourceLookup": "GitHub API tag/ref and tags-list requests returned HTTP 504; local installed package API and native WASM were available"
+  },
+  "developmentCorrections": [
+    "Initial constructor fixture used a 32-byte recovery wrap; generated ABI rejected it. Corrected to Bytes<64>.",
+    "Initial error assertion expected ReadMismatch spelling; native error used 'mismatch between expected ... and actual ... read'. Assertion corrected to actual message shape.",
+    "Readability finding LAB-R1: added full s1 predecessor encoding comparison around the overflow attempt, rather than relying only on balance/round checks. Reran the complete native scenario; exit 0 with the recorded outcomes."
+  ],
+  "notExercised": ["ZK proof generation/verification", "wellFormed/VerifiedTransaction/LedgerState.apply", "network submission/finality", "fallible partial application", "authenticated caller/time/assets", "Agda/native model comparison"]
+}
