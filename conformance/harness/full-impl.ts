@@ -100,6 +100,7 @@ export interface ConcreteContext {
   costModel: unknown;
 }
 export interface ConcreteResult { result: unknown; context: ConcreteContext; gasCost: unknown }
+export type NativeExecutionObserver = (account: FullAccount, label: string, result: ConcreteResult) => void;
 export interface ContractInstance {
   initialState(context: unknown, ...args: unknown[]): Promise<{ currentContractState: { data: AccountState }; currentPrivateState: unknown; currentZswapLocalState: unknown }>;
   impureCircuits: Record<string, (context: unknown, ...args: unknown[]) => Promise<ConcreteResult>>;
@@ -170,7 +171,8 @@ export class FullAccount {
   time = 1_800_000_000;
   heldCoin: unknown = { nonce: new Uint8Array(32), color: new Uint8Array(32), value: 0n, mt_index: 0n };
   readonly observations: FullObservation[] = [];
-  constructor(readonly impl: FullImplementation, readonly formalVM: FormalVM) {
+  constructor(readonly impl: FullImplementation, readonly formalVM?: FormalVM,
+    readonly observeExecution?: NativeExecutionObserver) {
     this.privateState = invoke(impl.witnesses, 'emptyCoinStore');
   }
   ledger(): Module {
@@ -210,7 +212,7 @@ export class FullAccount {
         assertConstructorAllocation(this.impl.info, allocation);
         const body = interpretAccountTranscript(runtime, captured.queries[24].final as unknown as ObservableQuery,
           captured.body, captured.costModel, this.impl.info);
-        const formalVM = [await this.formalVM.compare(captured.initial, captured.transcript.program, admitted)];
+        const formalVM = this.formalVM ? [await this.formalVM.compare(captured.initial, captured.transcript.program, admitted)] : [];
         const nativeCommitments = [observeNativeCommitments(admitted, captured.final)];
         this.state = result.currentContractState.data;
         this.privateState = result.currentPrivateState;
@@ -229,6 +231,7 @@ export class FullAccount {
         });
         const result = await this.impl.contract.impureCircuits[name](context, ...args);
         circuitReturned = true;
+        this.observeExecution?.(this, label, result);
         const final = result.context.callContext;
         const output = toValue(info['result-type'], result.result);
         const vm = decodeAccountTranscript(context, result);
@@ -244,7 +247,7 @@ export class FullAccount {
           // This is the pinned runtime API, not unchecked external JSON.
           const runtime = this.impl.runtime as unknown as ObservationRuntime;
           vmObservations.push(interpretAccountTranscript(runtime, trace.initialQueryContext, trace.publicTranscript, result.context.costModel, this.impl.info));
-          formalVM.push(await this.formalVM.compare(trace.initialQueryContext, trace.publicTranscript, admitted));
+          if (this.formalVM) formalVM.push(await this.formalVM.compare(trace.initialQueryContext, trace.publicTranscript, admitted));
           nativeCommitments.push(observeNativeCommitments(admitted, trace.finalQueryContext));
         }
         const transcripts = result.context.callProofDataTrace.map(trace => ({

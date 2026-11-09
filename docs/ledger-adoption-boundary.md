@@ -9,6 +9,14 @@ candidate platform assumptions below are **not approved assumptions or establish
 truths**. No Agda bridge is added: a wrapper taking the desired local execution
 as a premise would not establish the missing correspondence.
 
+**Full-validation application remains BLOCKED.** The 2026-11-09 investigation
+did execute native `LedgerState.apply`, including partial failure, but only with
+three validation checks disabled and synthetic ledger funding. Those diagnostic
+results are not authenticated adoption. All 141 sampled source transcripts were
+checkpoint-free: no within-call authority-only prefix survived; complete calls
+did survive failures of other segments. See [the measured scope](#partition-and-application-diagnostics)
+and [the exact platform blocker](#current-platform-and-full-validation-blocker).
+
 Read [Account](../src/Passport/Account.agda),
 [TransactionSafetyProperties](../src/Passport/TransactionSafetyProperties.agda)
 and [TransactionSafety](../src/Passport/TransactionSafety.agda) for the existing
@@ -16,9 +24,11 @@ specification and claim. The [proof](../src/Passport/TransactionSafetyProof.agda
 classifies the actual dispatched withdrawal; it does not choose an authorization
 branch on the caller's behalf. [Conformance scope](conformance-testing-plan.md)
 and the [cryptographic audit](cryptographic-assumptions-audit.md) explain the
-separate execution and cryptographic boundaries. The executable evidence for
-this document is [ledger-adoption-smoke.mjs](../conformance/harness/ledger-adoption-smoke.mjs)
-and its [recorded result](../conformance/ledger-adoption-evidence.json).
+separate execution and cryptographic boundaries. Start with the
+[partition/application evidence](../conformance/ledger-partial-execution-evidence.json)
+and its [runner](../conformance/harness/ledger-partial-execution.mjs).
+The earlier [VM-only smoke](../conformance/harness/ledger-adoption-smoke.mjs)
+and [result](../conformance/ledger-adoption-evidence.json) remain historical evidence.
 The [commitment-binding audit](commitment-binding-audit.md) separately identifies
 canonical encoding and opening-agreement obligations; authenticated context
 does not discharge them.
@@ -45,13 +55,15 @@ references are at base `b87ccbeb556ace4b28265f49f0310c384f287451`.
 | E4 | Installed **`@midnight-ntwrk/midnight-js-contracts` 5.0.0-rc.2**, `dist/index.js`: `submitTx` (1974 onward), scoped submission (3050–3067), `createUnprovenLedgerCallTx` (3531–3588), `submitCallTx` documentation (3830 onward). It creates one `ContractCallPrototype` per call, attaches both transcript halves, obtains each deployed operation/verifier key, aggregates native offers by section, and refuses non-`SucceedEntirely` results before private-state persistence. SHA-256 `16a0f7566e9b27761cb34f256f005c7e8e757689bf273358d588b5c71ff26d7e` identifies the inspected installed file, rather than inferring its contents from a version label alone. |
 | E5 | Historical implementation [`GRANTS-E2.md`, S12–S14](https://github.com/midnightntwrk/passport/blob/fc19e471536febb2133f20e817847251622dcdf5/contract/GRANTS-E2.md#composition-s13), and `contract/evidence/grants-e2-composition-grants-conformance-composition.json`. The recorded ordered pair advances grant nonce twice; its reversed pair is rejected with `ReadMismatch`, nonce unchanged. The prose also reports another run with one fallible call applied, but the cited JSON is the whole-rejection run. These are **historical reports**, not fresh results or universal semantics. Attribution: compiler **0.33.0-rc.2**, compact-js **2.5.5-rc.6**, midnight-js **5.0.0-beta.4**, node **2.1.0-2e92c4ae642c**, indexer **4.4.0-rc.2**, proof-server **9.0.0-rc.6**; not the E1 toolchain. |
 | E6 | `contract/TOOLCHAIN-0.35.md` and `contract/infra/docker-compose.yml` identify the later localnet: node **2.1.0-rc.4**, indexer **4.4.0-rc.6-b5e6c809**, proof-server **9.0.0-rc.8**, with image digests and limited coinless execution evidence. That report expressly does not rerun the full grants/custody/recovery suites. It does not upgrade E5's attribution. |
+| E7 | Primary upstream ledger revision [`67f9f97246339539af0091c4d8c6bc5ab236a191`](https://github.com/midnightntwrk/midnight-ledger/tree/67f9f97246339539af0091c4d8c6bc5ab236a191), tag `ledger-9.1.0.0-rc.5`: `ledger-wasm/package.json` declares version `1.0.0-rc.5`; `ledger/src/construct.rs` partitions at checkpoints; `ledger/src/semantics.rs` applies guaranteed state then independently commits successful fallible segments; `ledger-wasm/src/tx.rs` exposes the result. [Fetched excerpts and response hashes](../conformance/ledger-primary-source-evidence.json) fix the source inspection. This is version-corresponding source, **not a demonstrated build provenance for E2's binary**. |
 
-The npm ledger package/metadata supplies no `gitHead`. The native binary is
-identified, but its correspondence to a particular Rust source revision has not
-been established here. GitHub API source-tag/ref and tag-list retrievals returned
-HTTP 504; the exact local API, JavaScript adapter and executable WASM remained
-available as primary platform evidence. Neither API documentation nor sampled
-WASM behavior is a proof of the implementation's semantics.
+The npm ledger package/metadata supplies no `gitHead`. E7 was successfully
+retrieved during this investigation, superseding the earlier HTTP-504 obstacle.
+Its package name is `@midnight/ledger-v9`, whereas the installed package is
+`@midnightntwrk/ledger-v9`; no reproducible source-to-WASM match is established.
+Binary observations below are attributed to the hashed E2 installation, not
+inferred from Rust source alone. Neither source inspection, API documentation
+nor sampled WASM behavior is an implementation-correctness proof.
 
 ## The execution unit to adopt
 
@@ -63,6 +75,13 @@ actual section/segment result. E2 exposes both `logicalSegment` and
 `physicalSegment` on events, `successfulSegments` on `TransactionResult`, and
 separate guaranteed/fallible transcripts on `ContractCall`. Do not invent one
 source step per transaction or use only a transaction-wide status flag.
+
+**Do not interpret the Boolean from `successfulSegments` by its name.** In the
+installed WASM, a partial result with native debug status `0: Ok, 1: Err` exposes
+`[[0,false],[1,true]]`. E7's
+[`successful_segments`](https://github.com/midnightntwrk/midnight-ledger/blob/67f9f97246339539af0091c4d8c6bc5ab236a191/ledger-wasm/src/tx.rs#L1895-L1910)
+uses `v.is_err()`, not `v.is_ok()`. The evidence retains the raw map, native debug
+result, events and actual state/asset deltas; it never calls `true` a success.
 
 The candidate **source adoption unit** is one *complete source call*, with its
 actual transcript halves and effects attributed to their ledger sections. A
@@ -225,57 +244,234 @@ categorical protocol's reachability theorem can be imported as a proof of A2–A
 
 ## Executed evidence and precise limits
 
-On 2026-11-06, the checked-in smoke ran the **actual generated constructor and
-`deposit_unshielded` circuit**, with production witness construction and E1's
-pin validation. It then used the **real ledger-v9 WASM** `QueryContext.runTranscript`
-and `partitionTranscripts`, not a replacement ledger model:
+### Historical VM-only smoke
 
-- Deposits of 7 then 11 produced source-runtime account balances `0 → 7 → 18`
-  and rounds `0 → 1 → 2`. Both complete native ledger replay states matched the
-  generated circuit's state. There were 34 and 38 transcript operations.
-- Replaying the first recorded transcript on its successor, and the second on
-  the original predecessor, each failed on an expected/actual read mismatch.
-  This is concrete order/stale-view evidence at the VM seam, not a signature
-  test or a node-admission result.
-- The native partitioner placed all 34/38 operations in the guaranteed halves,
-  with no fallible half for these two calls. Native unshielded-input claims
-  were 7/11. This does **not** measure any fallible partial application.
-- The public runtime context constructor retained an explicitly supplied
-  contract caller and time `1800000999`. This demonstrates host control over
-  the simulation context, not a ledger-authenticated caller forgery or a
-  caller-restricted Passport withdrawal.
-- Adding `2^128−1` to the balance 7 was refused by the generated bounded cast;
-  the predecessor remained balance 7/round 1. This is local source-builder
-  failure, not a measurement of fee/ledger rollback.
+The 2026-11-06 [smoke result](../conformance/ledger-adoption-evidence.json)
+executed the generated constructor and two `deposit_unshielded` calls, then
+replayed and partitioned their real transcripts. Balances were `0 → 7 → 18`,
+rounds `0 → 1 → 2`, and both 34/38-operation transcripts were wholly guaranteed.
+Stale/reversed replay failed with a read mismatch; a bounded overflow was refused
+locally. Host-supplied caller/time fields were retained. That run did **not**
+execute `wellFormed`, `LedgerState.apply`, proofs or a node. Its two earlier
+fixture corrections remain recorded. The following is new, separate evidence.
 
-Command (from this worktree; `FULL_IMPL_DIR` follows the existing harness pin
-configuration):
+### Partition and application diagnostics
+
+The [isolated runner](../conformance/harness/ledger-partial-execution.mjs)
+uses the pinned generated contract, production witness construction and genuine
+local source signatures, through the existing
+[full scenarios](../conformance/harness/full-scenarios.ts). No formal VM is used
+in this runner; the existing optional formal-comparison route remains separate.
+It asserts exact decoded public-state equality, not just selected counters.
+
+| Measured scope | Result |
+|---|---|
+| Main/full native scenario invocations, plus two positive grant spends per scheme | 141 successful nonconstructor calls; all **52** runtime entrypoints covered |
+| Native standalone partition | 96 wholly guaranteed, 45 wholly fallible, **0 split calls**, **0 checkpoint operations** |
+| Local builder outcomes | 147 accepted (including six constructors), 114 rejected; complete outcomes and origin labels retained |
+| Diagnostic transaction attempts | 513: **192 success**, **105 partialSuccess**, **120 failure**, **96 pre-application `wellFormed` refusals** |
+| Schedule records | 87: six whole-account partition probes, 69 adjacent-call pairs, 12 sender/receiver compositions; stale-competitor controls are additionally retained in `applications` |
+
+The 126 main-suite calls and 15 calls for consecutive positive-grant scenarios
+make up the 141 partition records. Twelve extra real `deposit_shielded` receiver
+calls are composed with the sender probes; they are recorded in those schedules,
+not counted as additional standalone entrypoint coverage. Whole-account batches
+are **partition-only** probes, not complete histories applied to a ledger.
+
+The standalone partition below was identical across jubjub, k256 and p256 for
+the sampled branches. `G`/`F` describes the **entire** call, not an intrinsic
+classification of the entrypoint: composition can change the chosen section.
+
+| Source operation classes | Entrypoints | Sampled standalone section and operations |
+|---|---:|---|
+| Initial activation, each authentication arm | 3 | G 40 |
+| Permissionless unshielded/shielded deposit | 2 | G 34 / G 33 |
+| Device-authorized append inbox / rotate key / add device / remove device | 12 | G 64 / G 53 / G 66 / F 74 |
+| Device unshielded withdrawal | 3 | G 94 |
+| Device shielded withdrawal, to user or contract | 6 | Exact: G 63; change: F 75 |
+| Device-authorized issue / revoke / revoke-all grants | 9 | Issue F 67, same-ID reissue F 71; revoke G 62; revoke-all G 61 |
+| Grant unshielded withdrawal | 3 | G 80, including the source-accepted zero-value case |
+| Grant shielded withdrawal, to user or contract | 6 | Exact: G 52; change: F 80 |
+| Device-authorized publish recovery / cancel recovery | 6 | F 102 / F 74 |
+| Recovery submit / finalise | 2 | F 69 / F 92 |
+
+In E1, jubjub/k256 authorization updates the scratch device membership before
+signature verification, whereas p256 verifies WebAuthn before that update
+(`account.compact` 847–912; `account-p256.compact` 57–70). Successful device
+authorization advances the device commitment, `auth_nonce` and `round`.
+Grant settlement instead advances grant `nonce`, `spent_commit` and `round`,
+not the device authorization counter (`account.compact` 1944–1968, 2008–2035;
+`account-p256.compact` 332–343). Unshielded withdrawal then debits the mirror
+balance and sends; shielded withdrawal declares coin effects and appends change
+to the inbox when needed. The inspected source ordering does not itself prove
+that a scratch prefix commits.
+
+Every sampled transcript contains no `ckpt`, and the actual partitioner returned
+one nonempty section per call. E7's
+[`split_at`](https://github.com/midnightntwrk/midnight-ledger/blob/67f9f97246339539af0091c4d8c6bc5ab236a191/ledger/src/construct.rs#L767-L818)
+explains why checkpoint-free calls are not split by that algorithm.
+This supports **complete-call units for these samples**, not universal
+serialization of all inputs, compiler outputs, compositions or authenticated
+histories.
+
+### What native application did and did not validate
+
+The runner constructs real `ContractCallPrototype`/`Intent`/native offers,
+calls `Transaction.eraseProofs().wellFormed`, and passes its returned
+`VerifiedTransaction` to **the real native `LedgerState.apply`**.
+The type name does not restore the disabled checks:
+
+| `WellFormedStrictness` flag | Diagnostic value |
+|---|---|
+| `enforceBalancing` | **false** — no globally balanced fee/funding transaction |
+| `verifyNativeProofs` | **false** — no verified shielded/native proofs |
+| `verifyContractProofs` | **false** — no proof binding to a deployed Passport key |
+| `enforceLimits` | true |
+| `verifySignatures` | true |
+
+Keeping transaction-signature checks enabled is **not** ledger verification of
+Passport's private circuit signatures: that requires the disabled contract-proof
+check. Synthetic state is installed with `LedgerState.updateIndex`; synthetic
+native balances match the source mirror, and needed shielded input coins are
+inserted into a private in-memory Zswap state. Operations use undeployed blank
+`ContractOperation` objects. These are neither authenticated holdings nor a
+deployment-rooted source history. Every application record repeats this boundary.
+
+The all-five-flags-enabled negative control rejects a proof-erased activation
+with `invalid balance -413620000000001 for token Dust in segment 0`.
+That is an observed funding/balancing refusal, **not a successful proof check**
+and not evidence about which proof error would occur next.
+
+### Surviving state and failed sections
+
+Each record links `before`/`after` to complete decoded public ledger snapshots
+in `states`, including device set, authority counters, grant records and
+`spent_commit`, mirror balances, inbox entries/count and recovery fields.
+Native contract balances, Zswap roots/next leaf, UTXO-set hashes/deltas, events,
+physical sections and native result text are retained separately. Coin inputs,
+outputs and source effects are recorded with their transcript section.
+
+- **Stale standalone calls:** all 126 structurally admissible samples reject
+  their own transcript on the successor. Guaranteed failures report `failure`;
+  fallible failures report `partialSuccess` with an empty successful guaranteed
+  section. Public state, native balances, UTXOs and shielded state do not change.
+- **Competing inbox appends:** two independently prepared copies of the same
+  fresh call become wholly fallible under native joint partitioning. In separate
+  segments, the first commits and the stale second fails: `round 2 → 3`,
+  `auth_nonce 0 → 1`, `inbox_count 0 → 1`, one device-commitment advance, no
+  balance/coin change. In one shared segment, the second failure rolls back both
+  calls; even the first inbox/counter update does not survive.
+- **Positive grant pair, all three schemes:** ordered spends of 3 then 3 commit
+  nonce `0 → 2`, the corresponding spent commitments for `0 → 3 → 6`,
+  round `3 → 5`, mirror/native balance `100 → 94`, and two UTXOs of 3.
+  Reversing physical segments makes the nonce-1 call fail first, then the nonce-0
+  call commit: nonce `0 → 1`, spent commitment for 3, round `3 → 4`, balance
+  `100 → 97`, one UTXO of 3. Device set, `auth_nonce = 1` and inbox stay fixed.
+  The failed first physical segment remains in the record.
+- **Duplicate fresh grant spend:** separate segments retain exactly the first
+  spend and one UTXO; putting both calls in one segment rolls back settlement,
+  mirror/native debit and output together. No nonce-only/spent-only prefix
+  survives either test.
+- **Shielded settlement/change:** the jubjub grant sample has round `22 → 23`,
+  grant nonce `2 → 3`, spent commitment for `3 → 7`, inbox `8 → 9`,
+  unchanged `auth_nonce = 11` and device set, and Zswap next leaf `1 → 3`
+  (recipient output plus change). Exact-spend branches have no change append.
+  All three arms and both user/contract recipients are exercised.
+- **Cross-contract receive:** all 12 sender-plus-real-`deposit_shielded`
+  compositions apply successfully in this diagnostic mode; sender and receiver
+  public post-states match their generated calls. A sender without matching
+  receive is refused by `wellFormed`.
+- **Asset failures:** 42 missing-offer attempts are refused before application.
+  Fifteen positive unshielded withdrawals with funded source mirrors but absent
+  native balance fail unchanged. Twelve shielded replays use an original
+  reference state but an already-spent application state; all fail unchanged.
+  The three zero-grant withdrawals accepted by the local circuit cannot form a
+  ledger transaction here: the native UTXO check rejects zero-value output.
+- **Ordered does not always mean successful:** three recovery submit/finalise
+  pairs retain the submit but reject finalise. The transaction uses the first
+  call's block context, before the elapsed window required by the later builder.
+  Both builder contexts and the actual application context are recorded.
+  Other pre-application pair refusals, including native causality checks, are
+  retained rather than rewritten as successful source histories.
+
+These are independent seeded diagnostic schedules, not one reconstructed chain.
+Every attempted call, failed segment and retained whole call remains visible;
+`retainedCompleteCalls` is a measured state match, not a proof certificate.
+The observations refute “every transaction or segment corresponds to one source
+call” but do **not** exhibit a surviving partial source call. They support the
+narrow complete-call projection for the measured schedules only. The 114 local
+builder refusals are separate from ledger failures and are not presented as
+ledger rollback observations.
+
+### Current platform and full-validation blocker
+
+The [platform probe](../conformance/harness/ledger-platform-probe.mjs) and
+[unaltered command evidence](../conformance/ledger-platform-evidence.json)
+replace the old “no running stack” observation with a fresh setup investigation.
+Docker worked; the default ports 9944/8088/6300 were initially closed, and the
+exact E6 images were already cached. No new executable image was downloaded.
+An isolated fresh **`--dev`** authority node on port 19945 started successfully:
+`system_version = 2.1.0-1b2b31c7`, runtime spec 2001000/transaction 4, best
+block 2 after 15 seconds. Its finalized head was still genesis at that observation.
+This proves a local node can run, not that any Passport transaction was submitted
+or finalized. The earlier non-authority launch remained at genesis.
+
+Two independent proof paths were attempted:
+
+1. The cached pinned proof-server image on isolated port 16301 exited before
+   readiness while fetching SRS/native prover resources.
+2. The pinned compiler's `zkir-v3 compile` on the real activation ZKIR selected
+   `k = 14`, 13447 rows, then failed fetching `bls_midnight_2p14`; no prover or
+   verifier key was generated. Existing generated artifacts have `--skip-zk`
+   provenance and no Passport key files.
+
+The exact blocked origin is **`https://srs.midnight.network:443`**. The direct
+probe returned HTTP 403, “Approval required”, suggesting `sbx policy approval ls`;
+`sbx` is not installed in this environment. Activation needs
+`/bls_midnight_2p14`; proof-server startup additionally requested SRS powers
+10–15 and `/zswap/10/{spend,output,sign}.prover`, `/dust/10/spend.prover`.
+The user explicitly chose **Keep access blocked**. No further fetch, approval
+bypass or policy change is part of this investigation.
+
+Thus full validation is **BLOCKED at trusted proving material/key generation**.
+A generated Passport verifier key, real contract/native proofs, an authenticated
+deployment and a fee-balanced/funded transaction have not been supplied or
+constructed. An indexer was not started after the prerequisite failed. Merely
+starting one, or receiving a `VerifiedTransaction` with three checks disabled,
+cannot fill that gap. A version-compatible, approved source of proving material
+is needed before these later stages can be attempted honestly.
+
+All containers created by the probes were removed; cleanup command statuses are
+recorded. No existing chain, user keys, source implementation or sandbox policy
+was changed. This worktree is retained because the full-validation criterion
+was not achieved.
+
+### Reproduction and remaining obligations
+
+The changed-path diagnostic smoke exits 0 under Node v22.22.1:
 
 ```sh
 node --import /Users/andre/IOHK/arc-passport/.worktrees/formal-correspondence-main/contract/node_modules/tsx/dist/loader.mjs \
-  conformance/harness/ledger-adoption-smoke.mjs
+  conformance/harness/ledger-partial-execution.mjs --diagnostic-apply \
+  --output=conformance/ledger-partial-execution-evidence.json
 ```
 
-The run exited 0 under Node **v22.22.1**. Two fixture/assertion corrections before
-the successful run are retained in the evidence record; no failed run is counted
-as a passing scenario. No Agda check or Agda/native comparison was run for this
-document-only theorem boundary.
+`FULL_IMPL_DIR` selects the existing pinned implementation. The explicit
+`--diagnostic-apply` switch acknowledges the disabled-check boundary. Evidence
+contains source/tool/artifact hashes, runner/helper hashes, complete final-run
+outcomes and earlier development-run failures/corrections as `previousAttempts`.
+No receipt was hand-edited. No Agda check or new Agda bridge is claimed.
 
-Local node/indexer/proof-server ports 9944/8088/6300 refused connections, and
-`docker ps` succeeded with no running containers. This establishes absence of a
-running local stack at the probed endpoints, **not impossibility of starting one
-or using a remote deployment**. No existing chain, keys or implementation files
-were changed. The available alternative was exercised: exact-version local
-ledger API/source inspection, npm primary metadata, the historical versioned
-composition record, and the native generated-circuit/ledger-VM scenario above.
-No `wellFormed`, `VerifiedTransaction`, `LedgerState.apply`, ZK proof verification,
-network submission, authenticated assets or finality was exercised. The remaining
-platform evidence needed is a version-matched, funded deployment/prover/node and
-receipts/state observations for ordered/reordered calls and mixed
-successful/failed fallible segments, with all validation checks enabled.
+The platform probe was run with `--isolated-stack
+--output=conformance/ledger-platform-evidence.json` before the user kept SRS
+access blocked. **Do not rerun it under that decision:** it starts the prover
+and attempts those downloads. Use its captured evidence until access is
+explicitly reopened.
 
-Before asserting full adoption correspondence, A1–A6 must be independently
+Before asserting full adoption correspondence, A1–A6 must still be independently
 justified (or explicitly approved as trusted assumptions), the complete-call
 projection must cover every intervening account mutation, and the existing
-cryptographic/opening premises must still be met. Current evidence supports a
-useful specification and concrete boundary observations, not that final claim.
+cryptographic/opening premises must still hold. No candidate assumption has been
+approved by these tests. The completed investigation establishes finite partition
+and disabled-validation application facts; the requested authenticated
+full-application claim remains blocked.
