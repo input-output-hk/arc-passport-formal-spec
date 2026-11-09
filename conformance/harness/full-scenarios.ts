@@ -2,7 +2,7 @@
 // items); source signer helpers provide actual signatures and held_coin uses the
 // production private coin store. No circuit is credited for merely existing.
 import { FullAccount, invoke, record, rnd } from './full-impl.ts';
-import type { FullImplementation, FullObservation, Module } from './full-impl.ts';
+import type { FullImplementation, FullObservation, Module, NativeExecutionObserver } from './full-impl.ts';
 import { installRepresentedFixture } from './full-boundaries.ts';
 import type { FormalVM } from './vm-formal.ts';
 
@@ -31,7 +31,8 @@ const deviceBuilders = (impl: FullImplementation, arm: Arm): Module => record(ar
   : arm === 'jubjub' ? impl.signer.jubjubChallenges : impl.signer.k256Challenges);
 const grantBuilders = (impl: FullImplementation, arm: Arm): Module => record(arm === 'p256' ? impl.p256.p256GrantChallenges
   : arm === 'jubjub' ? impl.signer.jubjubGrantChallenges : impl.signer.k256GrantChallenges);
-export async function fullScenarios(impl: FullImplementation, formalVM: FormalVM): Promise<ScenarioResult> {
+export async function fullScenarios(impl: FullImplementation, formalVM?: FormalVM,
+  observeExecution?: NativeExecutionObserver): Promise<ScenarioResult> {
   const observations: FullObservation[] = [];
   const expectations: ScenarioResult['expectations'] = [];
   const run = async (account: FullAccount, label: string, name: string, args: unknown[], expected: 'accepted' | 'rejected', boundsBits?: string) => {
@@ -43,7 +44,7 @@ export async function fullScenarios(impl: FullImplementation, formalVM: FormalVM
   for (const arm of ['jubjub', 'k256', 'p256'] as const) {
     const owner = actor(impl, arm), stranger = actor(impl, arm);
     const recovery = generate(impl.signer, 'JubjubDevice');
-    const account = new FullAccount(impl, formalVM);
+    const account = new FullAccount(impl, formalVM, observeExecution);
     const prefix = (s: string) => `${arm}: ${s}`;
     const salt = rnd(), enc = rnd(), wrap = rnd(64);
     const boot = invoke(owner.device, 'bootCommitment', salt);
@@ -239,4 +240,50 @@ export async function fullScenarios(impl: FullImplementation, formalVM: FormalVM
     account.origin = 'reachable-history';
   }
   return { observations, expectations };
+}
+
+/** Two positive spends of one issuance, with no intervening public mutation.
+ * Kept separate from the cap-exhaustion scenarios above so partition probes do
+ * not change that suite's historical amounts or expected refusals. */
+export async function grantPartitionPairs(impl: FullImplementation,
+  observeExecution: NativeExecutionObserver): Promise<FullObservation[]> {
+  const observations: FullObservation[] = [];
+  for (const arm of ['jubjub', 'k256', 'p256'] as const) {
+    const owner = actor(impl, arm), recipient = rnd(), salt = rnd(), color = rnd();
+    const account = new FullAccount(impl, undefined, observeExecution);
+    const run = async (label: string, circuit: string, args: unknown[]) => {
+      const observation = await account.call(`${arm} grant pair: ${label}`, circuit, args);
+      if (observation.outcome.tag !== 'accepted') throw new Error(`${label}: ${observation.outcome.error.original}`);
+      observations.push(observation);
+    };
+    await run('constructor', 'constructor', [invoke(owner.device, 'bootCommitment', salt),
+      rnd(), generate(impl.signer, 'JubjubDevice').pk, rnd(64), 60n]);
+    const activation = arm === 'p256' ? [owner.device.pk, salt, owner.device.policy]
+      : arm === 'k256' ? [owner.device.pk, salt, owner.device.envelope] : [owner.device.pk, salt];
+    await run('activation', `activate_initial_device_with_${arm}`, activation);
+    await run('fund', 'deposit_unshielded', [color, 100n]);
+    const origin = invoke(impl.signer, 'originHash', 'http://localhost:8973'), grantSalt = rnd();
+    const grantee = owner.grantee, grantId = invoke(grantee, 'grantId', account.address, origin, 0n);
+    const scope = record(invoke(impl.signer, 'spendScope', { withdrawUnshielded: true,
+      color, cap: 100n, perCallCap: 10n,
+      ...(arm === 'p256' ? { rpIdHash: record(grantee.policy).rp_id_hash } : {}) }));
+    const digest = invoke(impl.signer, 'scopeDigest', grantSalt, scope);
+    const challenge = invoke(deviceBuilders(impl, arm), 'issueGrant',
+      { contractAddress: account.address, authNonce: account.ledger().auth_nonce }, owner.device.pk, grantId, digest);
+    const auth = await invoke(owner.device, 'sign', challenge, 0n);
+    await run('issue', `issue_grant_with_${arm}`, [grantId, ...array(invoke(impl.signer, 'scopeArgs', scope)),
+      grantSalt, ...array(invoke(impl.signer, 'authArgs', auth))]);
+    let opening = record(invoke(impl.signer, 'openingOf', scope, grantSalt, origin, 0n));
+    for (const n of [1, 2]) {
+      const g = record(invoke(record(account.ledger().grants), 'lookup', grantId));
+      const challenge = invoke(grantBuilders(impl, arm), 'withdrawUnshielded',
+        { contractAddress: account.address, grantId, issuedAt: g.issued_at, grantNonce: g.nonce },
+        grantee.pk, color, 3n, recipient);
+      const auth = await invoke(grantee, 'sign', challenge);
+      await run(`spend ${n}`, `withdraw_unshielded_with_grant_${arm}`,
+        [color, 3n, { bytes: recipient }, ...array(invoke(impl.signer, 'grantAuthArgs', opening, auth))]);
+      opening = { ...opening, spentPrev: BigInt(String(opening.spentPrev)) + 3n };
+    }
+  }
+  return observations;
 }

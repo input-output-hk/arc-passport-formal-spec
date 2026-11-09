@@ -1,0 +1,280 @@
+{
+  "schema": 1,
+  "startedAt": "2026-11-09T14:10:44.069Z",
+  "node": "v22.22.1",
+  "boundary": "Infrastructure availability only; no Passport deployment, transaction or finality claim",
+  "commands": [
+    {
+      "program": "docker",
+      "args": [
+        "ps",
+        "-a",
+        "--format",
+        "{{.Names}} {{.Image}} {{.Status}}"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "program": "docker",
+      "args": [
+        "image",
+        "ls",
+        "--digests",
+        "--format",
+        "{{.Repository}}:{{.Tag}} {{.Digest}}"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "midnightntwrk/midnight-node:2.1.0-rc.4 sha256:9040c346c27f569b72dfbbad9420cf38fc7cc6a13b38adf814a925bbe9311678\nghcr.io/midnightntwrk/indexer-standalone:4.4.0-rc.6-b5e6c809 sha256:ecfec6a26b9f8f89b7531e8f7c390f841661fb079bdf0bc57fa2cf8bb3f99c2f\nmidnightntwrk/proof-server:9.0.0-rc.8 sha256:2666c7bd7b4517f8ad135565387f98d14347a9ac715c6c466d4a8a852b545ecf\n",
+      "stderr": ""
+    },
+    {
+      "program": "docker",
+      "args": [
+        "run",
+        "--detach",
+        "--pull",
+        "never",
+        "--name",
+        "passport-ledger-probe-node-2502173",
+        "--network",
+        "host",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--env",
+        "CFG_PRESET=dev",
+        "--env",
+        "SIDECHAIN_BLOCK_BENEFICIARY=04bcf7ad3be7a5c790460be82a713af570f22e0f801f6659ab8e84a52be6969e",
+        "--cap-add",
+        "CHOWN",
+        "--cap-add",
+        "DAC_OVERRIDE",
+        "--cap-add",
+        "FOWNER",
+        "midnightntwrk/midnight-node@sha256:9040c346c27f569b72dfbbad9420cf38fc7cc6a13b38adf814a925bbe9311678",
+        "--dev",
+        "--rpc-port",
+        "19945",
+        "--port",
+        "30340",
+        "--no-prometheus",
+        "--no-telemetry",
+        "--base-path",
+        "/tmp/passport-ledger-probe"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "a404dfefb1883a8c5af9c99a4cdd7bdc5151a0f84dc4c049abfe25522bafeb58\n",
+      "stderr": ""
+    },
+    {
+      "program": "docker",
+      "args": [
+        "run",
+        "--detach",
+        "--pull",
+        "never",
+        "--name",
+        "passport-ledger-probe-prover-2502173",
+        "--network",
+        "host",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--env",
+        "PORT=16301",
+        "midnightntwrk/proof-server@sha256:2666c7bd7b4517f8ad135565387f98d14347a9ac715c6c466d4a8a852b545ecf"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "dc40a3ff2ede72dc28bfcb7d4916e1d96f9b03c1b47c042e8a32db93ee3b87bd\n",
+      "stderr": ""
+    },
+    {
+      "program": "docker",
+      "args": [
+        "logs",
+        "passport-ledger-probe-node-2502173"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "",
+      "stderr": "2026-11-09 14:10:44 Midnight Node    \n2026-11-09 14:10:44 ✌️  version 2.1.0-1b2b31c7    \n2026-11-09 14:10:44 ❤️  by Substrate DevHub <https://github.com/substrate-developer-hub>, 2017-2026    \n2026-11-09 14:10:44 📋 Chain specification: undeployed1    \n2026-11-09 14:10:44 🏷  Node name: sordid-bottle-3434    \n2026-11-09 14:10:44 👤 Role: AUTHORITY    \n2026-11-09 14:10:44 💾 Database: ParityDb at /tmp/passport-ledger-probe/chains/undeployed/paritydb/full    \n2026-11-09 14:10:45 Reading registrations from: res/mock-bridge-data/default-registrations.json    \n2026-11-09 14:10:45 Loaded 1 registration rotations    \n2026-11-09 14:10:45 Start session 0, epoch 0    \n2026-11-09 14:10:46 🔨 Initializing Genesis block/state (state: 0xdee5…2032, header-hash: 0x38d3…6d3c)    \n2026-11-09 14:10:46 Creating transaction pool txpool_type=ForkAware ready=Limit { count: 8192, total_bytes: 20971520 } future=Limit { count: 819, total_bytes: 2097152 }\n2026-11-09 14:10:46 👴 Loading GRANDPA authority set from genesis on what appears to be first startup.    \n2026-11-09 14:10:46 Using default protocol ID \"sup\" because none is configured in the chain specs    \n2026-11-09 14:10:46 🏷  Local node identity is: 12D3KooWNYRhmiR5iyWDxMmbAYevQtbtJuMN2huACvns8cWsC5TF    \n2026-11-09 14:10:46 Running libp2p network backend    \n2026-11-09 14:10:46 local_peer_id=12D3KooWNYRhmiR5iyWDxMmbAYevQtbtJuMN2huACvns8cWsC5TF\n2026-11-09 14:10:46 💻 Operating system: linux    \n2026-11-09 14:10:46 💻 CPU architecture: aarch64    \n2026-11-09 14:10:46 💻 Target environment: gnu    \n2026-11-09 14:10:46 💻 Memory: 16205MB    \n2026-11-09 14:10:46 💻 Kernel: 7.0.14    \n2026-11-09 14:10:46 💻 Linux distribution: Amazon Linux 2023.12.20260918    \n2026-11-09 14:10:46 💻 Virtual machine: no    \n2026-11-09 14:10:46 📦 Highest known block at #0    \n2026-11-09 14:10:46 Running JSON-RPC server: addr=127.0.0.1:19945,[::1]:19945    \n2026-11-09 14:10:46 🏁 CPU single core score: 1.30 GiBs, parallelism score: 1.33 GiBs with expected cores: 8    \n2026-11-09 14:10:46 🏁 Memory score: 54.60 GiBs    \n2026-11-09 14:10:46 🏁 Disk score (seq. writes): 7.41 GiBs    \n2026-11-09 14:10:46 🏁 Disk score (rand. writes): 134.27 MiBs    \n2026-11-09 14:10:46 ⚠️  The hardware does not meet the minimal requirements Failed checks: Rnd Write(expected: 1.90 GiBs, found: 134.27 MiBs),  for role 'Authority'.    \n2026-11-09 14:10:46 🥩 BEEFY gadget waiting for BEEFY pallet to become available...    \n2026-11-09 14:10:46 MemoryMonitorService: memory monitoring disabled (threshold=0)    \n2026-11-09 14:10:46 Failed to trigger bootstrap: No known peers.\n2026-11-09 14:10:48 🙌 Starting consensus session on top of parent 0x38d37ec487443e0aaebc47d04884caf86a1bce70db06612e5d2e94b5c9bb6d3c (#0)    \n2026-11-09 14:10:48 ⏳ Initial epoch 996796 starting at block 1    \n2026-11-09 14:10:48 💼 Selected committee of 10 seats for epoch 996797 from 1 permissioned and 0 registered candidates    \n2026-11-09 14:10:48 💼 Storing committee of size 10 for epoch 996797, input data hash: 0xd520f67a34899fc1152765bd7d5219d23a027c97ddf2c735c98ebb14cf55d35a    \n2026-11-09 14:10:48 Post dispatch weight is greater than pre dispatch weight. Pre dispatch weight may underestimating the actual weight. Greater post dispatch weight components are ignored.\n\t\t\t\t\tPre dispatch weight: Weight { ref_time: 723388411, proof_size: 7968 },\n\t\t\t\t\tPost dispatch weight: Weight { ref_time: 834376211, proof_size: 7994 }    \n2026-11-09 14:10:48 Post dispatch weight is greater than pre dispatch weight. Pre dispatch weight may underestimating the actual weight. Greater post dispatch weight components are ignored.\n\t\t\t\t\tPre dispatch weight: Weight { ref_time: 723388411, proof_size: 7968 },\n\t\t\t\t\tPost dispatch weight: Weight { ref_time: 834376211, proof_size: 7994 }    \n2026-11-09 14:10:48 Post dispatch weight is greater than pre dispatch weight. Pre dispatch weight may underestimating the actual weight. Greater post dispatch weight components are ignored.\n\t\t\t\t\tPre dispatch weight: Weight { ref_time: 723388411, proof_size: 7968 },\n\t\t\t\t\tPost dispatch weight: Weight { ref_time: 834376211, proof_size: 7994 }    \n2026-11-09 14:10:48 🎁 Prepared block for proposing at 1 (15 ms) hash: 0x612e35886fbdd61a643b589c34fa76cf3ecc07c7c54a237443737a48b96efd10; parent_hash: 0x38d3…6d3c; end: NoMoreTransactions; extrinsics_count: 5    \n2026-11-09 14:10:48 🔖 Pre-sealed block for proposal at 1. Hash now 0x5f056a5b16433dd8dfc54043c152550291fee765768946281562fb0cb32ec1c3, previously 0x612e35886fbdd61a643b589c34fa76cf3ecc07c7c54a237443737a48b96efd10.    \n2026-11-09 14:10:48 🏆 Imported #1 (0x38d3…6d3c → 0x5f05…c1c3)    \n2026-11-09 14:10:48 Session 0: this node IS in the committee for this session (AURA key: 0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d, committee size: 1)    \n2026-11-09 14:10:51 💤 Idle (0 peers), best: #1 (0x5f05…c1c3), finalized #0 (0x38d3…6d3c), ⬇ 0 ⬆ 0    \n2026-11-09 14:10:54 🙌 Starting consensus session on top of parent 0x5f056a5b16433dd8dfc54043c152550291fee765768946281562fb0cb32ec1c3 (#1)    \n2026-11-09 14:10:54 🎁 Prepared block for proposing at 2 (0 ms) hash: 0xed554d77fde5482de6e36ffba6cccb541a954719f3cd4f4ad600b0f22bb90466; parent_hash: 0x5f05…c1c3; end: NoMoreTransactions; extrinsics_count: 4    \n2026-11-09 14:10:54 🔖 Pre-sealed block for proposal at 2. Hash now 0xe221f75dc4149ae75d4d28cbcf1496a20015aa847fa30afa605498486efea8e1, previously 0xed554d77fde5482de6e36ffba6cccb541a954719f3cd4f4ad600b0f22bb90466.    \n2026-11-09 14:10:54 🏆 Imported #2 (0x5f05…c1c3 → 0xe221…a8e1)    \n2026-11-09 14:10:56 💤 Idle (0 peers), best: #2 (0xe221…a8e1), finalized #0 (0x38d3…6d3c), ⬇ 0 ⬆ 0    \n"
+    },
+    {
+      "program": "docker",
+      "args": [
+        "logs",
+        "passport-ledger-probe-prover-2502173"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "\u001b[2m2026-11-09T14:10:44.285233Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_proof_server\u001b[0m\u001b[2m:\u001b[0m Ensuring zswap key material is available...\n\u001b[2m2026-11-09T14:10:44.285593Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing public parameters for k=10. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.289241Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing public parameters for k=11. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.291504Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing public parameters for k=12. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.293764Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing public parameters for k=13. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.295884Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing public parameters for k=14. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.297946Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing public parameters for k=15. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.300444Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing zero-knowledge proving key for Zswap inputs. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.302750Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing zero-knowledge proving key for Zswap outputs. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.304991Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing zero-knowledge proving key for Zswap signing operations. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.307421Z\u001b[0m \u001b[32m INFO\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m Missing zero-knowledge proving key for Dust spends. Attempting to download from the host https://srs.midnight.network/ - this is not a trusted service, the data will be verified.\n\u001b[2m2026-11-09T14:10:44.309516Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p10). Retrying...\n\u001b[2m2026-11-09T14:10:44.311941Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p11). Retrying...\n\u001b[2m2026-11-09T14:10:44.314178Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p12). Retrying...\n\u001b[2m2026-11-09T14:10:44.316492Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p13). Retrying...\n\u001b[2m2026-11-09T14:10:44.318563Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p14). Retrying...\n\u001b[2m2026-11-09T14:10:44.320802Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p15). Retrying...\n\u001b[2m2026-11-09T14:10:44.322827Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/spend.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.325368Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/output.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.327658Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/sign.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.329743Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/dust/10/spend.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.331886Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p10). Retrying...\n\u001b[2m2026-11-09T14:10:44.333949Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p11). Retrying...\n\u001b[2m2026-11-09T14:10:44.336034Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p12). Retrying...\n\u001b[2m2026-11-09T14:10:44.338344Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p13). Retrying...\n\u001b[2m2026-11-09T14:10:44.340399Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p14). Retrying...\n\u001b[2m2026-11-09T14:10:44.342404Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p15). Retrying...\n\u001b[2m2026-11-09T14:10:44.344480Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/spend.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.346472Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/output.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.348496Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/sign.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.350525Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/dust/10/spend.prover). Retrying...\n\u001b[2m2026-11-09T14:10:44.352644Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p10). Giving up.\n\u001b[2m2026-11-09T14:10:44.355484Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p11). Giving up.\n\u001b[2m2026-11-09T14:10:44.357625Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p12). Giving up.\n\u001b[2m2026-11-09T14:10:44.358023Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p13). Giving up.\n\u001b[2m2026-11-09T14:10:44.358331Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p14). Giving up.\n\u001b[2m2026-11-09T14:10:44.358768Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/bls_midnight_2p15). Giving up.\n\u001b[2m2026-11-09T14:10:44.359255Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/spend.prover). Giving up.\n\u001b[2m2026-11-09T14:10:44.359603Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/output.prover). Giving up.\n\u001b[2m2026-11-09T14:10:44.360070Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/zswap/10/sign.prover). Giving up.\n\u001b[2m2026-11-09T14:10:44.360354Z\u001b[0m \u001b[33m WARN\u001b[0m \u001b[2mmidnight_base_crypto::data_provider\u001b[0m\u001b[2m:\u001b[0m error sending request for url (https://srs.midnight.network/dust/10/spend.prover). Giving up.\n",
+      "stderr": "Error: Custom { kind: InvalidData, error: \"Failed to fetch data from https://srs.midnight.network/bls_midnight_2p10 after 3 attempts. Giving up.\" }\n"
+    },
+    {
+      "program": "curl",
+      "args": [
+        "--max-time",
+        "15",
+        "--silent",
+        "--show-error",
+        "--include",
+        "--range",
+        "0-31",
+        "https://srs.midnight.network/bls_midnight_2p10"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "HTTP/1.1 200 OK\r\n\r\nHTTP/1.1 403 Forbidden\r\nContent-Length: 99\r\nContent-Type: text/plain\r\n\r\nApproval required for srs.midnight.network:443.\n\nReview and respond with:\n  sbx policy approval ls\n",
+      "stderr": ""
+    },
+    {
+      "program": "sbx",
+      "args": [
+        "policy",
+        "approval",
+        "ls"
+      ],
+      "status": null,
+      "signal": null,
+      "stdout": "",
+      "stderr": "",
+      "error": "spawnSync sbx ENOENT"
+    },
+    {
+      "program": "/tmp/passport-compact-0.35.0/zkir-v3",
+      "args": [
+        "compile",
+        "/Users/andre/IOHK/arc-passport/.worktrees/formal-correspondence-main/contract/contracts/managed/account/zkir/activate_initial_device_with_jubjub.zkir",
+        "/tmp/passport-ledger-platform-BKFFLv/activation.prover",
+        "/tmp/passport-ledger-platform-BKFFLv/activation.verifier"
+      ],
+      "status": 1,
+      "signal": null,
+      "stdout": "",
+      "stderr": "Compiling circuit \"/Users/andre/IOHK/arc-passport/.worktrees/formal-correspondence-main/contract/contracts/managed/account/zkir/activate_initial_device_with_jubjub.zkir\" (k=14, rows=13447)\rError: Failed to fetch data from https://srs.midnight.network/bls_midnight_2p14 after 3 attempts. Giving up.\n"
+    },
+    {
+      "program": "docker",
+      "args": [
+        "rm",
+        "--force",
+        "passport-ledger-probe-node-2502173"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "passport-ledger-probe-node-2502173\n",
+      "stderr": ""
+    },
+    {
+      "program": "docker",
+      "args": [
+        "rm",
+        "--force",
+        "passport-ledger-probe-prover-2502173"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "passport-ledger-probe-prover-2502173\n",
+      "stderr": ""
+    }
+  ],
+  "endpoints": [
+    {
+      "url": "http://127.0.0.1:9944/",
+      "error": "TypeError: fetch failed",
+      "cause": "Error: connect ECONNREFUSED 127.0.0.1:9944"
+    },
+    {
+      "url": "http://127.0.0.1:8088/",
+      "error": "TypeError: fetch failed",
+      "cause": "Error: connect ECONNREFUSED 127.0.0.1:8088"
+    },
+    {
+      "url": "http://127.0.0.1:6300/",
+      "error": "TypeError: fetch failed",
+      "cause": "Error: connect ECONNREFUSED 127.0.0.1:6300"
+    },
+    {
+      "url": "http://127.0.0.1:19945/",
+      "error": "TypeError: fetch failed",
+      "cause": "Error: connect ECONNREFUSED 127.0.0.1:19945"
+    },
+    {
+      "url": "http://127.0.0.1:16301/",
+      "error": "TypeError: fetch failed",
+      "cause": "Error: connect ECONNREFUSED 127.0.0.1:16301"
+    },
+    {
+      "url": "http://127.0.0.1:19945",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "system_version",
+        "params": []
+      },
+      "status": 200,
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"2.1.0-1b2b31c7\"}"
+    },
+    {
+      "url": "http://127.0.0.1:19945",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "system_health",
+        "params": []
+      },
+      "status": 200,
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"peers\":0,\"isSyncing\":false,\"shouldHavePeers\":false}}"
+    },
+    {
+      "url": "http://127.0.0.1:19945",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "chain_getHeader",
+        "params": []
+      },
+      "status": 200,
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"parentHash\":\"0x5f056a5b16433dd8dfc54043c152550291fee765768946281562fb0cb32ec1c3\",\"number\":\"0x2\",\"stateRoot\":\"0xab706df179f5d12642ddcb705397b3af4d8ff6aafa3db514addc42a1164188ef\",\"extrinsicsRoot\":\"0xa8f42c758534cd07d2651109852f32f1859fff2da66f464f5157c4352a9495fd\",\"digest\":{\"logs\":[\"0x066175726120bdf8d21100000000\",\"0x066d637368800558e43800000000000000000000000000000000000000000000000000000000\",\"0x044d4e53561068881e00\",\"0x044245454684038a7920ebb1a0d519f6b7655c19d42407046c47af3fa024278c107cc5ed83b817\",\"0x05617572610101c8dc220362a4c96031aba1626a8ff9472852d8c32c88fbc72c27cb1a2ee4c82a13de84fb82e2a48caeaaaba5966f966565ed90883d14fe8300f2c6bb5ecf8089\"]}}}"
+    },
+    {
+      "url": "http://127.0.0.1:19945",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "chain_getFinalizedHead",
+        "params": []
+      },
+      "status": 200,
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x38d37ec487443e0aaebc47d04884caf86a1bce70db06612e5d2e94b5c9bb6d3c\"}"
+    },
+    {
+      "url": "http://127.0.0.1:19945",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "state_getRuntimeVersion",
+        "params": []
+      },
+      "status": 200,
+      "body": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"specName\":\"midnight\",\"implName\":\"midnight\",\"authoringVersion\":1,\"specVersion\":2001000,\"implVersion\":0,\"apis\":[[\"0xfbc577b9d747efd6\",1],[\"0xdf6acb689907609b\",5],[\"0x7d699da8a672e867\",5],[\"0x22a0eaa81c05f0d3\",1],[\"0x817793cea3bd352e\",1],[\"0x37e397fc7c91f5e4\",2],[\"0x40fe3ad401f8959a\",6],[\"0xd2bc9897eed08f15\",3],[\"0xf78b278be53f454c\",2],[\"0xdd718d5cc53262d4\",1],[\"0x49eaaf1b548a0cb0\",6],[\"0xa897625b130086bd\",1],[\"0x91d5df18b0d2cf58\",3],[\"0x2a5e924655399e60\",1],[\"0xab3c0572291feb8b\",2],[\"0xed99c5acb25eedf5\",3],[\"0xbc9d89904f5b923f\",1],[\"0xa0c89371ec56244c\",1],[\"0x85570eddd92bc2f7\",1],[\"0xd9bc84ac3bfb8a0c\",1],[\"0xc7805fd5ec973a86\",1],[\"0x19dba14093498f16\",2],[\"0x279a32908e96410d\",1],[\"0x0093e736d7484c30\",1],[\"0xc3c222f40af6f42b\",1],[\"0x393b2599ea57bca2\",1]],\"transactionVersion\":4,\"systemVersion\":3,\"stateVersion\":3}}"
+    },
+    {
+      "url": "http://127.0.0.1:16301/version",
+      "error": "TypeError: fetch failed",
+      "cause": "Error: connect ECONNREFUSED 127.0.0.1:16301"
+    }
+  ],
+  "compilerSha256": "86c79876fbeab6da77b1355426fd69cd5d5e65c2982134a6495d5fc64e591574",
+  "result": "INVESTIGATED",
+  "completedAt": "2026-11-09T14:11:00.259Z",
+  "runnerSha256": "b5c76c6b67c0551da114f72f10a2d2715fbda1e0b28cce1694c5061901444493"
+}
