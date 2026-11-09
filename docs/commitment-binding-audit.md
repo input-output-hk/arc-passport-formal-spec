@@ -12,20 +12,21 @@ Fields deliberately omitted, wildcard meanings, source guards and the origin of
 context/state require different arguments. No semantic bug or Passport hash
 collision was demonstrated by this audit.
 
-Start with the [opening-premise inventory](#discharging-the-existing-premises),
-then the [layout inventory](#application-layouts) and
-[native evidence](#executed-native-evidence). The
+Start with the [checked canonical-serialization statements](#checked-canonical-serialization),
+the [opening-premise inventory](#discharging-the-existing-premises), then the
+[layout inventory](#application-layouts) and [native evidence](#executed-native-evidence). The
 [cryptographic assumptions audit](cryptographic-assumptions-audit.md) separately
 covers signature/token realization: commitment binding does not repair the
 native signature digest-uniqueness counterexamples documented there.
 
-Scope is formal base `b87ccbeb556ace4b28265f49f0310c384f287451`, with native
-[Passport `fc19e471536febb2133f20e817847251622dcdf5`][native]. Sources are
+The original audit used formal base `b87ccbeb556ace4b28265f49f0310c384f287451`;
+the serialization proofs extend `bb2dc02c60993a44c7d40d11173eb1abd8eff7c8`.
+Both use native [Passport `fc19e471536febb2133f20e817847251622dcdf5`][native]. Sources are
 [`account.compact`][account], [`account-p256.compact`][p256],
 [`webauthn.compact`][webauthn], and the installed runtime identified by
 [`passport-main-pins.json`](../conformance/harness/passport-main-pins.json).
-No cryptographic model, theorem, library classification, exception, or Passport
-implementation is changed here.
+No cryptographic model, library classification, exception, or Passport
+implementation is changed. The checked results below concern serialization only.
 
 ## From typed atoms to hash input
 
@@ -74,14 +75,13 @@ tags, rather than claiming injectivity of all raw `Value` representations.
 ### What injectivity means here
 
 For a **fixed layout**, cut the concatenation at its known offsets. Equality of
-bytes gives equality of every fixed-width byte slice; unsigned little-endian
-encoding is injective on its bounded range, and canonical Boolean/field encoding
-is likewise injective. For canonical affine nonidentity keys, the two coordinates
-identify the key; the omitted identity flag is fixed false by successful
-coordinate extraction. This is a mathematical argument about these recipes,
-not an Agda proof of the native serializer or a universal native-refinement
-result. The probes below support, but do not prove, that the implementations
-follow the recipes for every admitted input.
+bytes gives equality of every fixed-width byte slice; unsigned little-endian,
+Boolean and field encodings recover their canonical inputs. This argument is
+now checked for the Agda encoder below. For keys it recovers only the two
+included coordinates, **not a semantic curve point**. Successful native affine
+extraction and any uniqueness/membership result about native point representations
+remain separate obligations. Neither the proof nor the probes establish
+universal correspondence with the native serializer.
 
 There is **no injectivity over arbitrary typed Atom lists**: native and
 independent encoders both hash `[Bytes<1>(01), Bytes<1>(02)]` exactly like
@@ -90,6 +90,136 @@ identical SHA inputs, **not collisions of distinct byte strings and not Passport
 exploits**. A theorem producing unequal formal typed preimages therefore needs
 fixed-layout/canonical-encoding evidence before its result becomes a native
 SHA-256 collision witness.
+
+## Checked canonical serialization
+
+Reader entry point:
+[`Passport.CommitmentEncodingProperties`](../src/Passport/CommitmentEncodingProperties.agda).
+Its statements refer directly to
+[`CommitmentEncodingProof`](../src/Conformance/CommitmentEncodingProof.agda).
+The definitions reuse the existing `FullAccountTypes.Value`, `Atom`, `Bytes`,
+`fieldOrder`, and little-endian decoder `le`; the encoder implements the
+full-width recipes of `independent-hash.ts`, not an additional tagged wire format.
+The existing VM instruction encoder is a different boundary and is not reused
+as a hash serializer. These new modules are **unclassified**, not assumed library
+knowledge; no classification or exception is proposed.
+
+The explicit assumption `CanonicalAtoms layout atoms` fixes every atom name,
+order, value constructor and compound arity. Each `Bytes<n>` has exactly `n`
+natural octets below 256; `uint n` is a natural below `256^n`; a Field is below the
+existing `fieldOrder`; Boolean has exactly its two constructors. Structures
+recursively satisfy their listed component conditions. Addresses use raw 32-byte
+values; JubJub uses a tuple of two canonical Fields. k256/p256 keys enter only
+after coordinate extraction, as two `Bytes<32>` atoms. The predicates say nothing
+about curve/subgroup membership, the origin of a key, or authorization.
+
+| Checked statement | Conclusion |
+| --- | --- |
+| `bounded-little-endian-roundtrip` | `le (littleEndian width n) = n` when `n < 256^width`, including width zero. |
+| `canonical-value-roundtrip`, `canonical-value-injective` | Fixed-width bytes, unsigned integers, Fields, Booleans and fixed compound structures round-trip and are injective on canonical Values. |
+| `serialized-octets` | Every natural in a canonical preimage's serialization is below 256. |
+| `fixed-layout-roundtrip`, `fixed-layout-injective` | The fixed-layout decoder recovers the entire canonical typed Atom list; equal serialized bytes imply equal included typed fields. |
+| `included-fields-distinct` | Unequal canonical Atom lists in any `commitmentLayout kind` below serialize to unequal byte lists. |
+| `SourceChallenges.device-challenge-distinct`, `grant-challenge-distinct` | The same result for the fixed curve/operation challenge layouts below. |
+
+The decoder is a left inverse **on these canonical inputs**, not a validating
+parser for arbitrary bytes. The total encoder has no advertised behavior on
+malformed Values; in particular, invoking it is not proof that an input was
+validated. The proof has no assumption about hashes, signatures or a primitive
+interpretation. A fixed layout is necessary: atom labels are restored by the
+decoder from the layout, not recovered from serialized tags.
+
+[`CommitmentLayouts`](../src/Conformance/CommitmentLayouts.agda) supplies the
+following concrete instantiations. Its lists retain the source's actual Atom
+names (including address kinds and compound coin atoms), rather than merely
+counting a sequence of byte widths.
+
+| Layout | Actual source preimage |
+| --- | --- |
+| `device c`, `bootstrap c` for all three curves | `FullAccountCrypto.entryAt`, `bootCommit`, including `keyAtoms` and `policyAtoms`; 140/141/193 and 128/129/181 bytes. |
+| `grantIdentifier c` for all three curves | `FullAccountGrant.grantId`; 161/162/161 bytes. |
+| `object`, `spent`, `presentCaller`, `relyingParty`, `scope` | Hash arguments of `FullAccountBody.objectCommit`, `spentCommit`, the **present** branch of `callerCommit`, `rpCommit`, and the **outer** `scopeDigest`; 145/80/96/96/309 bytes. |
+| `origin` | `FullAccountGrantSecurity.grantOriginPreimage`; 53 bytes. |
+| `recoverySubmit` | `FullAccountSignatureBinding.submitPreimage`, the source submit challenge; 412 bytes. |
+| `Challenges P.deviceChallengeLayout c op` | `FullAccountCrypto.challengeAt` with `FullAccountBody.operationAtoms`, using the existing source `Operation` enumeration: all 12 operations, all three curves. Includes recovery-session Fields/length/wrap, qualified coins, and issue-grant's nested scope digest. |
+| `Challenges P.grantChallengeLayout c op` | `challengeAt` with `FullAccountGrantSecurity.grantChallengeAtoms`: three withdrawal operations and all three curves, including id, issued-at, qualified coin and shielded change fields. |
+
+Domain bytes are included as the first canonical `Bytes<32>` value. The theorem
+does not require that value to be a particular literal: it works for each fixed
+layout even if the domain field varies. Applying it to source executions uses
+the exact domain literals/hashes in the inventory below. Neither all-literal
+cross-layout separation nor source evaluation's satisfaction of
+`CanonicalAtoms` is proved by the layout table.
+
+To apply the result to an existing source typed-preimage inequality, retain its
+actual two Atom lists, fix the same curve/operation layout, and supply
+`CanonicalAtoms` for both. `fixed-layout-injective` or the corresponding
+distinction theorem then supplies a byte-level witness. The remaining bridge is
+that the pinned native encoder hashes **these** bytes for every admitted input,
+and that the source/ABI validates the stated canonical conditions. No successful
+call, typed-preimage inequality, or finite native vector corpus alone supplies
+that universal bridge.
+
+No result recovers omitted fields, normalized Maybe representations, absent
+caller salt, underlying plaintext from a nested digest, or semantic curve points.
+No hash-injectivity, crypto-realization premise, or cryptographic reduction is
+introduced. The existing pair/history-local opening premises remain explicit.
+
+### Serialization verification and changed-path smoke
+
+The canonical check of `src/Passport/CommitmentEncodingProperties.agda` passed
+with the four-module closure, using the repository's locked command:
+
+```sh
+flock /tmp/passport-properties-agda.lock timeout 1800 env LC_ALL=C.UTF-8 \
+  pagda --useUntracked false check src/Passport/CommitmentEncodingProperties.agda \
+  -- +RTS -M3G -H1G -RTS
+```
+
+The final property check exited 0 (3.64 seconds); no warning-gate diagnostic was
+reported. All four new modules retain `--safe --without-K`, with no postulates,
+termination escapes or unsolved holes.
+
+The pinned native boundary probe was rerun successfully: all **66** rows passed.
+A separate Agda executable then evaluated the **new**
+`Conformance.CommitmentEncoding.encodeAtoms` on the **36** digest vectors from
+that probe. SHA-256 of its actual emitted octets matched both the freshly
+executed independent TS encoder and the pinned native digest for every vector.
+This is a compiled Agda/new-encoder comparison, not merely a rerun of TS.
+The comparison is at the digest-vector boundary; it is not a universal proof or
+a direct observation of the native runtime's internal SHA input buffer.
+
+Coverage: U8/U32/U64/U128 zero, endian sample, high bit and maximum; Field
+0/258/F−1; both Booleans; all three device/bootstrap/grant-id arms; object maximum,
+RP, present caller, outer scope, recovery-submit boundary fields, and a JubJub
+grant shielded challenge with qualified coin/issuance fields. It does not exercise
+all 45 operation/curve challenge combinations or every canonical input.
+Existing audited source pins, curve extraction, and native public pure circuits
+were used unchanged; no signature, ledger admission, rollback or proof-generation
+claim follows.
+
+Retained external artifacts:
+
+- `local://CanonicalEncodingSmoke.agda`: actual executable source, importing the
+  new encoder/layout definitions, SHA-256
+  `91c5a07b44d31fa52c816c38f609a62501b4ea0fb93a011eb06465534509504c`.
+- `local://canonical-encoding-smoke-input.json`: ordered canonical Atom vectors.
+- `local://canonical-encoding-native-evidence.json`: fresh native probe evidence,
+  SHA-256 `33956b58161a40b81cee9bf738a1cfb15266d9fd6f6e1e32bc4d4417c0aa6713`.
+- `local://canonical-encoding-crosscheck.json`: all actual Agda byte outputs and
+  matched digests, SHA-256
+  `736cf3990bea23d2a57eeba81ee52e8960ef119a72d29f7bc2115b1396fc0eea`.
+- `local://canonical-encoding-crosscheck.py`: executable comparison procedure.
+
+To reproduce, restore the smoke module and comparison script outside the
+checkout, rerun the [native probe](#executed-native-evidence), and compile the
+smoke module with the same `pagda check` command plus
+`-i /path/to/smoke --compile --compile-dir=/path/to/build --ghc-flag=-O0`
+after `--`. Run the comparison script with four arguments: the generated
+`CanonicalEncodingSmoke` executable, native evidence JSON, ordered input JSON,
+and output JSON. These retained files are review evidence, not project
+dependencies; preserve them with the package. If lost, the exact finite smoke
+cannot be reproduced from Git alone. The proof modules remain self-contained.
 
 ## Application layouts
 
@@ -343,7 +473,8 @@ byte rejection cases. Existing full conformance compares typed primitive results
 and runtime transcripts but shares curve/Poseidon primitives and does not prove
 universal serialization correctness. The additional run above targets the
 previously untested native-width, normalization and ambiguity boundaries; it does
-not rerun the full suite. No Agda source changed or Agda check ran for this audit.
+not rerun the full suite. That original audit changed no Agda source; the
+canonical-serialization extension above is a separate checked development.
 No ZK proof, admitted ledger transaction, finality event, browser ceremony, or
 hardware-signing evidence is claimed, and none is declared impossible.
 
@@ -358,8 +489,8 @@ hardware-signing evidence is claimed, and none is declared impossible.
    separately approved policy change says otherwise.
 3. Decide the adversarial experiment and reduction interface for commitment
    binding, including adaptive issuance, nested hashes and cross-purpose uses.
-   This audit selects neither a crypto model nor a generic encoding lemma: no
-   independently useful checked abstraction was necessary for this deliverable.
+   The serialization theorem supplies the distinct-byte step only; it selects
+   neither a crypto model nor an adversarial experiment.
 4. Supply authenticated deployment/state/context and platform-effect evidence
    separately before promoting local conditional properties to ledger-adopted
    properties. A finite passing native corpus and exact pin identity are evidence
