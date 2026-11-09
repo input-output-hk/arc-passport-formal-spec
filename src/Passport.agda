@@ -46,6 +46,10 @@ import Midnight.ContractDSL.AdversarialLifecycleProperties
 -- composition. Ideal signing interpretation remains distinct from a native
 -- cryptographic realization or a ledger-adoption theorem. Scope:
 -- docs/conformance-testing-plan.md#contract-level-authorization-evidence.
+-- Canonical fixed-layout bytes, distinct from hash binding/native refinement.
+import Conformance.CommitmentEncoding
+import Conformance.CommitmentLayouts
+import Passport.CommitmentEncodingProperties
 import Conformance.FullAccountSignatureBinding
 import Conformance.FullAccountSignatureBindingProperties
 import Conformance.FullAccountDeviceSecurity
@@ -143,6 +147,7 @@ import Conformance.RecoveryExecutionProof
 import Conformance.RecoveryAuthorityProof
 import Conformance.FullAccountProof
 import Conformance.FullAccountSignatureBindingProof
+import Conformance.CommitmentEncodingProof
 import Conformance.FullAccountDeviceSecurityProof
 import Conformance.FullAccountGrantSecurityProof
 import Conformance.FullAccountGrantScopeProof

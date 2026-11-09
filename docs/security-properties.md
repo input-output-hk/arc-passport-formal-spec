@@ -158,6 +158,16 @@ prefix; selecting only fully successful calls cannot erase such predecessors.
 Its compiler, proof-system, context, asset, ordering and finality obligations are
 candidates for justification or explicit trust, not approved assumptions.
 
+The [partial-execution investigation](ledger-adoption-boundary.md#partition-and-application-diagnostics)
+found no checkpoint or split source call in 141 sampled transcripts covering
+all 52 runtime entrypoints. Native application diagnostics showed complete
+calls surviving another segment's failure, while calls sharing a failed
+segment rolled back together; no within-call authorization-only prefix was
+observed. These results used proof-erased transactions, synthetic state/funding,
+and disabled balancing, native-proof and contract-proof checks. They support
+only finite diagnostic whole-call behavior, not authenticated serialization;
+full-validation application remains blocked by unavailable proving resources.
+
 **Checked local contract evidence:** the
 [`device statements`](../src/Conformance/FullAccountDeviceSecurityProperties.agda)
 derive live entry membership, verification, entry rolling and bounded nonce/round
@@ -186,11 +196,14 @@ injectivity, authenticated coin ownership or ledger adoption.
 
 The [commitment-binding audit](commitment-binding-audit.md) inventories fixed
 native preimages and canonical domains for the relevant opening agreements.
-Distinct included fields can yield a distinct-byte collision witness only after
-establishing canonical per-layout serialization; generic typed-atom inequality
-does not imply different bytes. The audit supplies inspected layout arguments
-and finite native boundary evidence, not a universal serializer proof,
-computational reduction or authentication of ledger inputs.
+The [canonical serialization proofs](../src/Passport/CommitmentEncodingProperties.agda)
+establish roundtrip, octet validity and injectivity of the concrete encoder for
+one fixed layout under explicit `CanonicalAtoms` conditions. The layout catalog
+covers audited commitments and source challenges; generic typed-atom inequality
+across layouts still does not imply different bytes. Universal source/ABI
+satisfaction of those conditions, native serializer correspondence, cross-layout
+domain separation and the cryptographic reduction remain obligations; the
+serialization theorem alone does not discharge relevant-opening agreement.
 
 The [`grant confinement statements`](../src/Passport/GrantConfinementProperties.agda)
 derive preservation of every ledger cell except grants, round, unshielded

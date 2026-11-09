@@ -12,6 +12,10 @@ The proof inventory below is covered by the integrated Agda entrypoint check. Ch
 
 The [transaction-safety theorem](../src/Passport/TransactionSafetyProperties.agda) classifies actual accepted runtime withdrawals into device/grant authorization, retains the exact source request and enforces intended grant scope plus the issuance cap including the current spend under explicit opening-agreement premises. It composes immediate device and historical symbolic-grant replay guarantees at their distinct boundaries, with exact-request provenance conditional on same-history token availability and trace agreement; cryptographic realization and ledger-adoption P11 remain open.
 
+### Canonical commitment serialization
+
+The [encoding proofs](../src/Passport/CommitmentEncodingProperties.agda) establish bounded little-endian and fixed-layout roundtrip, octet validity and injectivity under explicit canonical-value conditions, with layouts covering audited commitments and source challenges. A compiled instance of the new encoder matched 36 native/independent digest vectors; universal source canonicality, native refinement and hash binding are not established.
+
 ### Symbolic signature provenance
 
 The generic [symbolic signing](../src/Midnight/ContractDSL/SymbolicSigningProperties.agda) and [adversarial-history](../src/Midnight/ContractDSL/AdversarialLifecycleProperties.agda) proofs trace available tokens to attacker-controlled keys or approved honest issuance, with request-level provenance conditional on relevant encoding agreement. The [source binding](../src/Conformance/FullAccountSignatureBindingProperties.agda) and [account dispatcher bridge](../src/Passport/AccountRequestDispatchProperties.agda) connect this model to actual request extraction, but do not prove concrete cryptographic security or human consent.
@@ -84,11 +88,11 @@ The [assumption audit](cryptographic-assumptions-audit.md) inventories symbolic 
 
 ### Commitment serialization and binding
 
-The [commitment audit](commitment-binding-audit.md) gives canonical fixed-layout encoding arguments and native boundary evidence for the relevant opening premises, including all 61 application domain prefixes. Universal native serializer correspondence and collision/second-preimage reductions remain unproved; omitted fields, wildcard semantics and context authenticity need separate arguments.
+The [commitment audit](commitment-binding-audit.md) connects the checked fixed-layout encoder to source recipes and finite native evidence, including all 61 application domain prefixes. Universal source/ABI canonicality, native serializer correspondence, cross-layout separation and collision/second-preimage reductions remain unproved; omitted fields, wildcard semantics and context authenticity need separate arguments.
 
 ### Ledger adoption and transaction safety
 
-The [ledger-adoption boundary](ledger-adoption-boundary.md) specifies complete source-call projection, authenticated context/assets, ordering, partial effects and finality, with six candidate platform obligations that are neither approved nor discharged. A deployment-rooted projection cannot omit state-changing partial prefixes; native VM replay/ordering evidence does not establish that projection or top-level P11.
+The [ledger-adoption boundary](ledger-adoption-boundary.md) retains six unapproved platform obligations and a complete-history projection requirement; diagnostic application does not establish authenticated adoption or full P11. Full-validation execution is blocked by denied access to official SRS/proving resources, with access explicitly left blocked.
 
 ### Snapshot-aware reporting
 
@@ -139,6 +143,14 @@ The [native cryptographic audit](cryptographic-assumptions-audit.md#executed-evi
 ### Typed preimages need a canonical layout
 
 The [commitment probes](commitment-binding-audit.md#executed-native-evidence) show that different generic typed-atom lists can encode the same bytes and that low-level byte descriptors accept padding which the public circuit ABI rejects. These are encoding-boundary observations, not SHA-256 collisions or Passport exploits; binding arguments must restrict inputs to the validated layout.
+
+### Partial transactions can preserve complete calls
+
+The [ledger diagnostics](ledger-adoption-boundary.md#partition-and-application-diagnostics) sampled 141 checkpoint-free, unsplit source calls and observed complete calls surviving another segment's failure, while a shared failed segment rolled back its calls. Balancing and both proof checks were disabled with synthetic funding/state, so this is finite evidence for whole-call behavior, not authenticated serialization or a proof excluding partial source states.
+
+### Source acceptance is not native asset acceptance
+
+The [native application diagnostics](ledger-adoption-boundary.md) reject a source-accepted zero-value grant withdrawal at UTXO validation and exercise missing-offer, native-balance and duplicate-nullifier refusals. These observations reinforce the separate asset/adoption obligation; independently seeded later scenarios are not continuations of an applied history containing the rejected call.
 
 ### Execution evidence is broader than a proof of refinement
 

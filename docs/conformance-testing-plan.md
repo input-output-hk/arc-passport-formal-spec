@@ -77,14 +77,31 @@ or for the compiled implementation's transaction semantics.
 
 The [ledger-adoption boundary](ledger-adoption-boundary.md) specifies a complete
 source-call/segment projection and unverified context, asset, ordering,
-partial-application and finality obligations. Its
-[native scenario](../conformance/harness/ledger-adoption-smoke.mjs) and
-[recorded evidence](../conformance/ledger-adoption-evidence.json) exercise the
-generated constructor/deposits and real ledger-v9 VM replay/partitioner:
-sequential states match, stale ordering is refused, and host-supplied context
-remains unauthenticated. Both observed deposit transcripts are entirely
-guaranteed; no fallible partial application, proof verification or ledger
-inclusion was exercised.
+partial-application and finality obligations. The
+[VM-only scenario](../conformance/harness/ledger-adoption-smoke.mjs) and
+[its evidence](../conformance/ledger-adoption-evidence.json) cover sequential
+constructor/deposit transcript replay, stale-order rejection and host-supplied
+context. Both deposit transcripts are guaranteed-only; that scenario does not
+exercise ledger application.
+
+The separate [partial-execution runner](../conformance/harness/ledger-partial-execution.mjs)
+and [diagnostic evidence](../conformance/ledger-partial-execution-evidence.json)
+record 141 unsplit, checkpoint-free source partitions across all 52 runtime
+entrypoints and 513 transaction attempts: 417 reached real `LedgerState.apply`,
+with 192 successes, 105 partial successes and 120 failures; 96 were refused
+before application. The 87 schedules include reordered/stale inbox and grant
+calls, segment rollback, native balance/nullifier failures and 12 actual
+sender/receiver compositions. Complete calls survived failure in another
+segment; calls in a shared failed segment rolled back together.
+
+These are **disabled-validation diagnostics**: balancing, native-proof and
+contract-proof checks were false; transaction-signature and limit checks stayed
+enabled. Proof-erased transactions, undeployed operations and synthetic
+funding/state are not authenticated adoption. The result's `successfulSegments`
+Boolean name is not trusted: raw maps, native Ok/Err text and state/effect deltas
+are retained, including observed true-for-failure values. Full validation
+remains blocked by denied official SRS/proving-resource access; the isolated
+platform probe is not rerun while that access remains blocked.
 
 ### Deployment-rooted local histories
 
@@ -362,7 +379,19 @@ recomputes all 46 hashed prefixes. These probes exercise canonical widths,
 endianness/ranges, caller absence, nested commitments and generic encoding
 ambiguity, not universal serializer correctness or ledger admission.
 The exact executable and output are retained externally; the audit states
-the reproduction limits of its documentation-only commit.
+the reproduction limits.
+
+The [canonical encoding statements](../src/Passport/CommitmentEncodingProperties.agda)
+prove roundtrip/injectivity for a fixed layout under explicit canonicality
+conditions, with no hash premise. A compiled Agda executable calling the new
+`CommitmentEncoding.encodeAtoms` emitted 36 canonical byte vectors; SHA-256 of
+those actual bytes matched freshly exercised native and independent-TS digest
+vectors. The native boundary probe also passed all 66 rows. See the audit's
+[changed-path smoke](commitment-binding-audit.md#serialization-verification-and-changed-path-smoke)
+for retained source, inputs and comparison artifacts. This compares the new
+encoder at the digest-vector boundary, not native internal SHA input bytes,
+and proves neither universal native correspondence nor source admission of
+the canonicality conditions.
 
 ### Local history invariants
 
@@ -448,7 +477,7 @@ The integrated run of the working tree reported:
 | Concrete/model observations | 243 |
 | Entrypoints missing successful or refused cases | 0 |
 | Divergent observations | 0 |
-| Fine-grained primitive calls | 1848 |
+| Fine-grained primitive calls | 1845 |
 
 Cases cover bootstrap, all three authentication arms, device lifecycle, inbox,
 unshielded custody, shielded exact/change sends to keys and contracts, grant
