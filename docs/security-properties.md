@@ -12,17 +12,20 @@ Unless noted otherwise, these properties remain proposed obligations.
 
 The existing accounting model uses `M = ⟦architecture⟧` and traces from genesis,
 with balance queries at the user boundary. Its
-[balance definitions](https://github.com/input-output-hk/arc-passport-formal-spec/blob/e7dd04f1cdf910ed77a35dcfa5d7bd02df6ae246/src/Midnight/Passport/Properties.lagda.md#L155-L194)
-and [preservation theorem](https://github.com/input-output-hk/arc-passport-formal-spec/blob/e7dd04f1cdf910ed77a35dcfa5d7bd02df6ae246/src/Midnight/Passport/Properties.lagda.md#L339-L345)
-are mechanised. The theorem assumes local `Sound` and `PromptlyAccurate`,
-`FlowPreserving`, `QuerySound`, and `QueryComplete`; it does not establish these
-hypotheses for the account contract. Its `EventuallyAccurate` chooses a
+[balance definitions and preservation theorem](../src/Midnight/Passport/Properties.lagda.md)
+are mechanised. The theorem assumes local custody `Sound`, `PromptlyAccurate`,
+`AnswersOnly`, and `CanAnswer`, plus passport-key relay `ForwardsQuery`,
+`ForwardsAnswer`, `NoInvention`, and `Responsive`. Architectural flow preservation
+and query routing are derived, rather than additional global assumptions; the
+local component hypotheses are not established for a concrete account contract.
+Its `EventuallyAccurate` chooses a
 value-neutral continuation with an enabled accurate answer, possibly with no
 steps. This is may-liveness, not convergence on every fair execution.
 
 The accounting theorem does not establish the promises for the concrete implementation.
-See [modelling gaps](modelling-gaps-and-account-model.md#1-current-modelling-gaps)
-for the model's scope. In the proposed UC statements, `≤UC` means simulator
+See the [finalized ledger scope](finalized-ledger.md) for the structured ledger
+model and the still-unproved connection to that architecture theorem.
+In the proposed UC statements, `≤UC` means simulator
 existence against an ideal functionality with an explicit permitted-leakage port.
 
 ## 1. Properties
@@ -99,6 +102,12 @@ separately authorised spend.
 The existing `Sound` has no asset, snapshot, or completeness fields. The
 conditional accounting theorem proves neither `SnapshotSound` nor
 `SnapshotProgress`; both require revised query semantics and concrete proofs.
+
+The [finalized ledger](finalized-ledger.md) gives structured, asset-indexed
+transfer and fee accounting, authorization, rejected-state preservation, and
+accepted-ID replay protection. Its exact per-cell accounting concerns abstract
+finalized state transitions, not balance reports or snapshot convergence; it
+does not establish `SnapshotSound` or `SnapshotProgress`.
 
 ### P13 · Funds availability
 
