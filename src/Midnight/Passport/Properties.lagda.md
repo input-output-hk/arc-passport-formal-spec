@@ -5,10 +5,13 @@ machine semantics of `Midnight.Passport.Semantics`. The headline result is
 **preservation of value**:
 
 > Run the whole passport system from its genesis state. If the account
-> custody contract keeps correct books, and the architecture faithfully
-> routes transactions and balance queries between the user and the contract,
-> then no balance the system ever reports exceeds the true balance and the true
-> balance is always observable.
+> custody contract keeps correct books and answers balance queries, and the
+> passport key relays those queries and their answers without inventing any,
+> then no balance the system ever reports exceeds the true balance, and the
+> true balance is always observable.
+
+Every hypothesis is a condition on one component; that the *architecture* then
+routes balance queries faithfully is proved, not assumed.
 
 ```agda
 {-# OPTIONS --safe #-}
@@ -31,13 +34,21 @@ open import Data.Integer using (ℤ; 0ℤ; +_; _+_; _≤_)
 open import Data.Maybe
 open import Data.Nat     using (ℕ)
 open import Data.Product
-import Data.Sum as Sum
+open import Data.Unit     using (⊤; tt)
 open import Relation.Binary.PropositionalEquality
 
 open import CategoricalCrypto.Channel.Selection
 open import CategoricalCrypto.Machine.Core
+open import CategoricalCrypto.Machine.Relay as Rl
+  using ( Port; Routing; wirePort; Relay
+        ; ForwardsQuery; ForwardsAnswer; NoInvention; Responsive
+        ; AnswersOnly; CanAnswer )
 open import CategoricalCrypto.Machine.Simulation
+open import CategoricalCrypto.Machine.Valuation
+open import CategoricalCrypto.Machine.Wiring
 
+open import Midnight.Passport.Flow
+import Midnight.Passport.QueryRouting as QR
 open import Midnight.Passport.Semantics
 ```
 
@@ -143,10 +154,8 @@ boundary (user-facing), and locally at `accountCustody`.
 
 ```agda
 module BalanceAccounting {A B : Channel} (M : Machine A B)
-  (let MC = Machine.machine-channel M)
-  (qry     : Channel.inType MC)
-  (ans     : ℕ → Channel.outType MC)
-  (txValue : Val M)
+  (port    : Port M ⊤ ℕ)         -- where the balance is asked for and read back
+  (txValue : Val (Machine.machine-channel M))
   (s₀      : Machine.State M)    -- genesis state
   (b₀      : ℕ)                  -- genesis balance
   where
@@ -155,7 +164,7 @@ module BalanceAccounting {A B : Channel} (M : Machine A B)
 
   -- in state s, a balance query can answer a
   Answers : S → ℕ → Set
-  Answers s a = ∃[ s' ] stepRel s qry (just (ans a)) s'
+  Answers s = Rl.Answers port s tt
 
   -- the net value moved by the transactions of a trace
   netFlow : ∀ {s₁ s₂} → Trace M s₁ s₂ → ℤ
@@ -184,32 +193,34 @@ module BalanceAccounting {A B : Channel} (M : Machine A B)
   Statement = Sound × EventuallyAccurate
 ```
 
-We can now instantiate this to the two variants:
+We can now instantiate this to the two variants. Each balance query rides the
+one wire its machine's codomain consists of — `Userᶜ` globally,
+`JubjubSchnorrᶜ` at the contract — which is what `wirePort` addresses.
 
 ```agda
-codᵍ : ∀ {m A C} → C [ m ]⇒[ ¬ₘ m ]ᵍ (A ⊗ᵀ (C Ch.⊗₀ Ch.I))
-codᵍ = L⊗ (ϵ ⊗R) ᵗ¹
+userPort : (M : Machine ⟦ Var CHAIN ⟧₀ ⟦ Var User ⟧₀) → Port M ⊤ ℕ
+userPort M = wirePort Userᶜ M (λ _ → getBalance) (λ _ → balanceIs)
+
+acPort : (AC : Machine ⟦ Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN ⟧₀ ⟦ Var JUBJUB-SCHNORR ⟧₀)
+       → Port AC ⊤ ℕ
+acPort AC = wirePort JubjubSchnorrᶜ AC (λ _ → getBalance) (λ _ → balanceIs)
 
 -- global
 module PreservationOfValue (M : Machine ⟦ Var CHAIN ⟧₀ ⟦ Var User ⟧₀) =
-  BalanceAccounting M (codᵍ ↑ₒ getBalance) (λ a → codᵍ ↑ᵢ balanceIs a)
+  BalanceAccounting M (userPort M)
 
 -- local (on ⟦accountCustody⟧)
 module PreservationOfValue-local
   (AC : Machine ⟦ Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN ⟧₀ ⟦ Var JUBJUB-SCHNORR ⟧₀) =
-  BalanceAccounting AC (codᵍ ↑ₒ getBalance) (λ a → codᵍ ↑ᵢ balanceIs a)
+  BalanceAccounting AC (acPort AC)
 ```
 
 ## 3. Proof machinery: from the whole system to the account contract
 
-We're working in a generic setting, so we need some extra hypotheses:
-
-* `FlowPreserving` — a global step's `txValue` is the `txValueᴬ`-flow of its
-  image: transactions crossing the `CHAIN` boundary reach `accountCustody`
-  with the same value, and no other value moves;
-* `QuerySound` / `QueryComplete` — the two directions of *the balances
-  exposed at the `User` boundary and by `accountCustody` agree*:
-  `G.Answers s a ⇔ L.Answers (π s) a`.
+We're working in a generic setting, so we need one extra hypothesis: a
+`Routing` of the balance query along the simulation — *the balances exposed at
+the `User` boundary and by `accountCustody` agree*, in both directions
+(`G.Answers s a ⇔ L.Answers (π s) a`, the `sound` and `complete` fields).
 
 The local lemma feeding the eventual-accuracy half is `PromptlyAccurate`,
 not `EventuallyAccurate`: `accountCustody` has already received every
@@ -220,26 +231,16 @@ bridge avoid a trace-lifting hypothesis (lifting an arbitrary local
 continuation into the composite is generally unprovable: it may take steps
 the surrounding context never drives).
 
-Given these, both halves of the global statement follow in a few lines.
-`QuerySound`/`QueryComplete` remain behavioral assumptions on
-`⟦passportKey⟧` (the model's machines are parameters, so they cannot be
-proved unconditionally).
+Given these, both halves of the global statement follow in a few lines. The
+`Routing` is where the architecture enters: §5 builds it from behavioral
+conditions on the components it passes through.
 
 ```agda
--- for performance reasons, we work generically here
-module _ {cm : ChannelModel} (mm : MachineModel cm) where
-  open MachineModel mm using (⟦architecture⟧; ⟦accountCustody⟧)
-
-  simAC : Sim ⟦architecture⟧ ⟦accountCustody⟧
-  simAC = ∘-simˡ ∙ ∘-simʳ
-        ∙ ∘-simˡ ∙ ∘-simʳ ∙ ⊗₁-simʳ
-        ∙ ∘-simˡ ∙ ∘-simʳ ∙ ⊗₁-simʳ
-        ∙ ∘-simˡ ∙ ∘-simʳ ∙ ⊗₁-simˡ
-
 module GlobalFromLocal-generic
   (M  : Machine ⟦ Var CHAIN ⟧₀ ⟦ Var User ⟧₀)
   (AC : Machine ⟦ Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN ⟧₀ ⟦ Var JUBJUB-SCHNORR ⟧₀)
-  (txValue : Val M) (txValueᴬ : Val AC)
+  (txValue : Val (Machine.machine-channel M))
+  (txValueᴬ : Val (Machine.machine-channel AC))
   (s₀ : Machine.State M) (b₀ : ℕ)
   (sim : Sim M AC)
   where
@@ -250,50 +251,30 @@ module GlobalFromLocal-generic
   module L = PreservationOfValue-local AC txValueᴬ (π s₀) b₀
 
   FlowPreserving : Set
-  FlowPreserving = Preserves txValue txValueᴬ
+  FlowPreserving = Preserves sim txValue txValueᴬ
 
-  QuerySound : Set
-  QuerySound = ∀ {s a} → G.Answers s a → L.Answers (π s) a
+  QueryRouted : Set
+  QueryRouted = Routing sim (userPort M) (acPort AC)
 
-  QueryComplete : Set
-  QueryComplete = ∀ {s a} → L.Answers (π s) a → G.Answers s a
-
-  module _ (fp : FlowPreserving) (qs : QuerySound) (qc : QueryComplete) where
+  module _ (fp : FlowPreserving) (qr : QueryRouted) where
 
     sound : L.Sound → G.Sound
     sound ls {a = a} t gans =
-      subst (λ z → + a ≤ + b₀ + z) (flow-onTrace fp t) (ls (onTrace t) (qs gans))
+      subst (λ z → + a ≤ + b₀ + z) (flow-onTrace fp t)
+            (ls (onTrace t) (Routing.sound qr gans))
 
     eventuallyAccurate : L.PromptlyAccurate → G.EventuallyAccurate
     eventuallyAccurate lp t with lp (onTrace t)
     ... | a , eq , lans =
-      _ , [] , refl , a , trans eq (cong (λ z → + b₀ + z) (flow-onTrace fp t)) , qc lans
+        _ , [] , refl , a
+      , trans eq (cong (λ z → + b₀ + z) (flow-onTrace fp t))
+      , Routing.complete qr lans
 
     statement : L.Sound → L.PromptlyAccurate → G.Statement
     statement ls lp = sound ls , eventuallyAccurate lp
 ```
 
 ## 4. The preservation of value theorem
-
-Combinators for extracting data out of messages.
-
-```agda
-⊗-proj : ∀ {A : Set} {C D} m → (modeType m C → A) → (modeType m D → A)
-       → modeType m (C Ch.⊗₀ D) → A
-⊗-proj {C = C} {D} m f g x = Sum.[ f , g ] (destruct-⊗ {C} {D} {m} x)
-
-module _ {A : Set} (f : ArchChan → Channel)
-         (proj : ∀ c m → modeType m (f c) → Maybe A) where
-
-  wiresProj : ∀ xs m → modeType m (objChannels f xs) → Maybe A
-  wiresProj []       _ _ = nothing
-  wiresProj (x ∷ xs) m   = ⊗-proj m (proj x m) (wiresProj xs m)
-
-  -- project out of a machine-boundary message (domain wires only)
-  projOn : ∀ dom cod m
-         → modeType m (objChannels f dom ⊗ᵀ objChannels f cod) → Maybe A
-  projOn dom cod m = ⊗-proj m (wiresProj dom m) λ _ → nothing
-```
 
 Fix the data of a deployment: an implementation of every component (`mm`), the
 balance impact of each adopted transaction (`txval`), and where the system
@@ -309,37 +290,82 @@ module Theorem
   (b₀ : ℕ)
   where
 
-  -- only the CHAIN wire carries value: an adopted transaction
-  -- (ChainEvent) moves the balance
-  txProj : ∀ c m → modeType m (channelSemantics c) → Maybe ℤ
-  txProj CHAIN In e = just (txval e)
-  txProj _     _  _ = nothing
-
+  -- a step moves the value of the transaction it takes in: `μ⊤`/`μᴬ` weigh
+  -- an adopted transaction (a `ChainEvent`) by `txval` and every other
+  -- message by 0
   opaque
-    txValue : Val ⟦architecture⟧
-    txValue i _ = fromMaybe 0ℤ
-      (projOn channelSemantics txProj (Var CHAIN) (Var User) In i)
+    txValue : Val (Machine.machine-channel ⟦architecture⟧)
+    txValue i _ = μ⊤ mm txval In i
 
-    txValueᴬ : Val ⟦accountCustody⟧
-    txValueᴬ i _ = fromMaybe 0ℤ
-      (projOn channelSemantics txProj
-        (Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN) (Var JUBJUB-SCHNORR) In i)
+    txValueᴬ : Val (Machine.machine-channel ⟦accountCustody⟧)
+    txValueᴬ i _ = μᴬ mm txval In i
 
   private
     module GFL = GlobalFromLocal-generic
       ⟦architecture⟧ ⟦accountCustody⟧ txValue txValueᴬ s₀ b₀ (simAC mm)
     open GFL
+
+  ------------------------------------------------------------------------
+  -- Proving `FlowPreserving`
+  ------------------------------------------------------------------------
+
+  opaque
+    unfolding txValue txValueᴬ
+
+    top-val : ∀ i o → netVal (μ⊤ mm txval) i o ≡ txValue i o
+    top-val = netVal-in {μ = μ⊤ mm txval} (μ⊤-out mm txval)
+
+    ac-val : ∀ i o → netVal (μᴬ mm txval) i o ≡ txValueᴬ i o
+    ac-val = netVal-in {μ = μᴬ mm txval} (μᴬ-out mm txval)
+
+  flowPreserving : FlowPreserving
+  flowPreserving = preserves-cong top-val ac-val (flowAC mm txval)
 ```
 
-Five hypotheses: The first two say the account custody contract keeps
-correct books, considered on its own; the last three say the architecture
-wires it up faithfully. Under those hypotheses, the whole system is sound
-and eventually accurate.
+### Routing the balance query
+
+`QueryRouted` is not an assumption about the architecture: it is *derived* from
+behavioral conditions on the two components the query actually visits. On the
+way down the query crosses `⟦passportKey⟧`, which must act as a **relay** for
+it — the query arrives from the user on `Userᶜ` and is forwarded onto the
+account interface, the answer comes back and is forwarded to the user:
+
+```agda
+  pkRelay : Relay ⟦passportKey⟧ ⊤ ℕ
+  pkRelay = QR.pkRelay mm getBalance balanceIs getBalance balanceIs
+```
+
+At the bottom sits `⟦accountCustody⟧`, which must answer a balance query with a
+balance (`AnswersOnly`) and must always have an answer to give (`CanAnswer`).
+Everything between them is wiring, and wiring relays for free — that is what
+`Midnight.Passport.QueryRouting` establishes, link by link along `acPath`.
+
+```agda
+  queryRouted : ForwardsQuery pkRelay → ForwardsAnswer pkRelay
+              → NoInvention pkRelay → Responsive pkRelay
+              → AnswersOnly (acPort ⟦accountCustody⟧)
+              → CanAnswer (acPort ⟦accountCustody⟧)
+              → QueryRouted
+  queryRouted = QR.balance-routes mm getBalance balanceIs getBalance balanceIs
+```
+
+### The theorem
+
+Eight hypotheses, and every one of them is a property of a *single* component.
+Two say the account custody contract keeps correct books; two more say it
+answers balance queries, and answers only those; the remaining four say the
+passport key relays the query and the answer faithfully — it forwards a query
+it is asked, forwards an answer it receives, never invents an answer of its
+own, and is always able to do both. Under those hypotheses, the whole system is
+sound and eventually accurate.
 
 ```agda
   preservation-of-value
     : L.Sound → L.PromptlyAccurate
-    → FlowPreserving → QuerySound → QueryComplete
+    → ForwardsQuery pkRelay → ForwardsAnswer pkRelay
+    → NoInvention pkRelay → Responsive pkRelay
+    → AnswersOnly (acPort ⟦accountCustody⟧) → CanAnswer (acPort ⟦accountCustody⟧)
     → G.Sound × G.EventuallyAccurate
-  preservation-of-value as aa vr bs bc = GFL.statement vr bs bc as aa
+  preservation-of-value as aa fq fa ni rsp ao ca =
+    GFL.statement flowPreserving (queryRouted fq fa ni rsp ao ca) as aa
 ```
