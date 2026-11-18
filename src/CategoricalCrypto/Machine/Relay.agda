@@ -10,8 +10,9 @@
 --
 -- A `Port` is where an observer asks `qry q` and reads `ans q v` back, and
 -- `Answers` says a machine can answer `v` to `q` there in one step; a `Server`
--- at that port answers every query and nothing else. A `Relay` adds the two
--- positions the query and the answer take on the way through. Its conditions
+-- at that port answers every query, and every query-triggered transition
+-- produces an answer to that query. A `Relay` adds the two positions the query
+-- and the answer take on the way through. Its conditions
 -- come in two modalities and both are needed: transferring an answer *down* to
 -- the server rests on the permissions `ForwardsQuery` / `ForwardsAnswer` (IF
 -- the component steps on this message, THEN it emits that one) together with

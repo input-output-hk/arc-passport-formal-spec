@@ -34,9 +34,10 @@ contribute to the sender's gross debits and recipient's gross credits in the
 specified asset. The fee contributes to its payer's gross debits and the fee
 pool, not to a recipient balance. This gives a structured alternative to an
 arbitrary `ChainEvent → ℤ` valuation: the amount and direction of an effect are
-not independently chosen by a valuation function. The older generic architecture
-accounting theorem remains generic; this work does not instantiate that theorem
-with this ledger.
+not independently chosen by a valuation function. The architecture accounting
+theorem remains generic; its [concrete custody instantiation](account-custody.md)
+uses this ledger and its derived effects to discharge the local accounting
+hypotheses, while retaining explicit passport-key relay assumptions.
 
 Before acceptance, each touched account/asset cell must cover **all** its gross
 debits from its prestate balance. Repeated transfers and a transfer overlapping
@@ -75,14 +76,15 @@ Transfers have matched debit and credit amounts by construction. There is no
 finite account registry or finite-support assumption here, so this is not a
 claim about a sum over all accounts or a global finite-total conservation theorem.
 
-## Limits and next integration boundary
+## Limits and custody integration
 
 This ledger does not prove Midnight finality, implement native transaction
 semantics, or refine the contract DSL into a native ledger. In particular,
 abstract rejected-state preservation says nothing about native partial transaction
-adoption. Custody/routing instantiation and the connection to the existing
-architecture's local accounting hypotheses are issue **#7**, not completed by
-this work. The maturity inventory in issue #5 is also outside this change.
+adoption. The [custody model](account-custody.md) instantiates the architecture's
+local accounting hypotheses using this ledger and account/asset-qualified
+queries, while retaining explicit passport-key relay assumptions. This does not
+establish asynchronous wallet synchronization or snapshot-aware reporting.
 
 ## Executable examples
 
