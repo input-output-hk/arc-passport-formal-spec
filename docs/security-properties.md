@@ -16,15 +16,17 @@ with balance queries at the user boundary. Its
 are mechanised. The theorem assumes local custody `Sound`, `PromptlyAccurate`,
 `AnswersOnly`, and `CanAnswer`, plus passport-key relay `ForwardsQuery`,
 `ForwardsAnswer`, `NoInvention`, and `Responsive`. Architectural flow preservation
-and query routing are derived, rather than additional global assumptions; the
-local component hypotheses are not established for a concrete account contract.
+and query routing are derived, rather than additional global assumptions.
+The [concrete custody instantiation](account-custody.md) discharges the four
+custody hypotheses for an account/asset-qualified finalized-ledger reporting
+machine; the four passport-key relay conditions remain explicit premises.
 Its `EventuallyAccurate` chooses a
 value-neutral continuation with an enabled accurate answer, possibly with no
 steps. This is may-liveness, not convergence on every fair execution.
 
-The accounting theorem does not establish the promises for the concrete implementation.
-See the [finalized ledger scope](finalized-ledger.md) for the structured ledger
-model and the still-unproved connection to that architecture theorem.
+The accounting theorem does not establish the promises for the concrete Passport
+implementation. See the [custody model scope](account-custody.md) for the
+complete-finalized-view assumption and the boundary to real wallet behavior.
 In the proposed UC statements, `≤UC` means simulator
 existence against an ideal functionality with an explicit permitted-leakage port.
 
@@ -99,15 +101,16 @@ After quiescence at `H`, a complete report must cover all movements through `H`.
 Fees are attributed to their payer and asset; custody-asset compensation is a
 separately authorised spend.
 
-The existing `Sound` has no asset, snapshot, or completeness fields. The
-conditional accounting theorem proves neither `SnapshotSound` nor
-`SnapshotProgress`; both require revised query semantics and concrete proofs.
+The [custody accounting theorem](account-custody.md) is indexed by account and
+asset, but has no snapshot identifier or completeness flags. It proves neither
+`SnapshotSound` nor `SnapshotProgress`; both require snapshot-aware query semantics
+and concrete synchronization proofs.
 
-The [finalized ledger](finalized-ledger.md) gives structured, asset-indexed
-transfer and fee accounting, authorization, rejected-state preservation, and
-accepted-ID replay protection. Its exact per-cell accounting concerns abstract
-finalized state transitions, not balance reports or snapshot convergence; it
-does not establish `SnapshotSound` or `SnapshotProgress`.
+The [finalized ledger](finalized-ledger.md) gives structured transfer and fee
+accounting, authorization-policy checks, rejected-state preservation, and
+accepted-ID replay protection. Its custody machine reports the resulting current
+balances exactly and connects them to architecture-level enabled answers under
+the relay assumptions, rather than modelling delayed or partial wallet views.
 
 ### P13 · Funds availability
 
