@@ -62,6 +62,10 @@ import Conformance.FullAccountGrantScopeProperties
 -- Grant withdrawals preserve account authority and other grants.
 import Passport.GrantConfinement
 import Passport.GrantConfinementProperties
+-- Pinned recovery: device-authorized session publication/cancellation,
+-- recovery and successor signatures at submission, and deadline-based
+-- finalisation tied to an actual source-history occurrence. Architecture and
+-- off-chain boundary: docs/conformance-recovery.md#pinned-recovery-architecture.
 import Conformance.FullAccountRecoverySecurity
 import Conformance.FullAccountRecoverySecurityProperties
 import Passport.AccountSecurity
