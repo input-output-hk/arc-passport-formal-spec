@@ -221,7 +221,10 @@ its definitions and separate proof implementation.
 - [`FullAccountGrantSecurityProperties`](../src/Conformance/FullAccountGrantSecurityProperties.agda):
   grant guards, presented caps and actual final settlement records.
 - [`FullAccountRecoverySecurityProperties`](../src/Conformance/FullAccountRecoverySecurityProperties.agda):
-  submission, cancellation, finalisation and pending-record effects.
+  session publication, signature-gated submission, cancellation, deadline-based
+  finalisation and pending-record effects. The
+  [pinned recovery architecture](conformance-recovery.md#pinned-recovery-architecture)
+  separates these contract operations from off-chain guardian recovery.
 - [`AccountRequestDispatchProperties`](../src/Passport/AccountRequestDispatchProperties.agda):
   the checked bridge from accepted runtime dispatch to actual source requests,
   required tokens and their availability.

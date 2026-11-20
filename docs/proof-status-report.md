@@ -54,7 +54,7 @@ The [grant replay proofs](../src/Passport/GrantReplayProperties.agda) derive str
 
 ### Recovery submission and finalisation
 
-[Recovery guard proofs](../src/Conformance/FullAccountRecoverySecurityProperties.agda) establish source verification, installation, cancellation and deadline/replacement facts. [Occurrence proofs](../src/Passport/AccountRecoveryOccurrenceProperties.agda) connect finalisation to an actual accepted submission in the deployment-rooted history, with no intervening accepted submission, cancellation or finalisation.
+[Recovery guard proofs](../src/Conformance/FullAccountRecoverySecurityProperties.agda) establish source facts about public session publication, recovery and successor signature checks, pending installation, device cancellation and deadline-based replacement. [Occurrence proofs](../src/Passport/AccountRecoveryOccurrenceProperties.agda) connect finalisation to an actual accepted submission in the deployment-rooted history, with no intervening accepted submission, cancellation or finalisation. The [pinned recovery architecture](conformance-recovery.md#pinned-recovery-architecture) distinguishes this signature gate from off-chain reconstruction; the reconstructed secret is not a prover input.
 
 ### Accumulated spending per grant issuance
 

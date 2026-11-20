@@ -59,9 +59,13 @@ concrete cryptographic realization and ledger-adoption correspondence. Abstract
 approval is not human consent, and these local statements are not the top-level
 security promises.
 
+The [pinned recovery architecture](docs/conformance-recovery.md#pinned-recovery-architecture)
+explains ledger publication, off-chain guardian recovery and the signature gate,
+and links the full-account recovery statements.
+
 [Recovery assurance](docs/conformance-recovery.md) records the concrete repair,
 corrected-model device-authority results and historical pinned gate evidence.
-The recovery route follows
+The earlier recovery route follows
 [`AccountRecovery.contract`](src/Passport/AccountRecovery.agda) →
 [`Contract.Admissions`](src/Midnight/ContractDSL/Contract.agda) (instantiated as `AccountRecovery.Chain`) →
 the advertised execution and authority properties. This is the post-bootstrap

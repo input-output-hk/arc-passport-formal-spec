@@ -1,28 +1,48 @@
 # Recovery assurance and historical conformance
 
-The historical result below concerns Passport
+For the full-account model at Passport `fc19e471536febb2133f20e817847251622dcdf5`,
+start with the [pinned recovery architecture](#pinned-recovery-architecture).
+The historical evidence below instead concerns Passport
 `5d12798321d3daba37b1da90162ee1468daf38a6`, with two signer-randomness injection
 commits ending at `7d21a277be9f92e7bc36a1a296599b9420194c44`.
-The executable `--safe` account model has its reader-facing intended contract in
-[`Passport.AccountRecovery`](../src/Passport/AccountRecovery.agda), with circuit
-bodies and wallet/conformance machinery in `src/Conformance`. The historical
-comparator uses source-shaped insertion; the intended contract fixes authority
-replacement. The [recovery specification](recovery-specification.md) describes
-the threat model and obligations. Historical numbers and transcripts below are
-not measurements of a repaired or deployed contract.
+The intended contract for that earlier recovery slice is
+[`Passport.AccountRecovery`](../src/Passport/AccountRecovery.agda); the
+historical comparator uses source-shaped insertion instead of the intended
+authority replacement. The [recovery specification](recovery-specification.md)
+describes the threat model and obligations. Historical numbers and transcripts
+below are not measurements of a repaired or deployed contract.
 For the recovery-slice integration, start at the
 [runtime transition monitor](#runtime-transition-monitor): checker, wire format,
 Haskell/C APIs, crypto backend and serialized implementation fixtures.
-The newer [pinned-main full-account run](conformance-testing-plan.md#pinned-main-full-account-execution)
-targets `fc19e471536febb2133f20e817847251622dcdf5` separately. That source
-already resets device membership during finalisation and invalidates retained
-grants by epoch; the historical repair below is not applied to it.
+The [pinned-main full-account run](conformance-testing-plan.md#pinned-main-full-account-execution)
+targets source that already resets device membership during finalisation and
+invalidates retained grants by epoch; the historical repair below is not applied to it.
 
 The sections labelled historical predate the port to `main`'s certified-transaction
 API. The committed recovery baseline was `26ab5df`; the historical runtime-monitor and
 primitive-boundary records also describe the uncommitted work preserved with
 that baseline. Those working-tree snapshots were not given commit identities.
 The historical lock is not evidence for the rebased source or dependency pin.
+
+## Pinned recovery architecture
+
+The [architecture explanation](../src/Midnight/Passport/Semantics.lagda.md#pinned-recovery-architecture)
+describes ledger publication, the recovering wallet's off-chain reconstruction,
+and the signature gate. To view the component diagram for this checkout, run
+`pagda --useUntracked false doc` and open the `Midnight.Passport.Semantics`
+page in the generated HTML. Its `architecture.svg` is a build asset, not a
+file in the source tree.
+
+From [`Passport.agda`](../src/Passport.agda), follow
+[`Passport.Account`](../src/Passport/Account.agda) for local source transitions,
+[`FullAccountRecoverySecurityProperties`](../src/Conformance/FullAccountRecoverySecurityProperties.agda)
+for publication, submission, cancellation and finalisation evidence, and
+[`AccountRecoveryOccurrenceProperties`](../src/Passport/AccountRecoveryOccurrenceProperties.agda)
+for the link from finalisation to the actual accepted submission in a
+deployment-rooted source history.
+
+These are results about local source execution, not proofs of the off-chain
+protocol, ledger adoption, or refinement from the component diagram.
 
 ## Certified-transaction port verification
 

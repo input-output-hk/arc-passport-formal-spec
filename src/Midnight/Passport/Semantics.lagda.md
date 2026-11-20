@@ -9,8 +9,7 @@ interpretation functors* recipe:
   architecture rebuilt in this category.
 * **Syntax functor** `syn : C_arch → FMTerm` — the object-generator map
   `chanName : ArchChan → String` together with `synBox`, which sends each box to
-  its named `gen`. Because the objects differ (`ArchChan` vs `String`), `syn`
-  transports along `chanName`; it recovers the `architecture` term verbatim.
+  its named `gen`. It gives the `FMTerm` rendered below.
 * **Semantics generator data** — each channel to a `Channel` and each `ArchBox`
   to a `Machine`. By the universal property of the free strict monoidal category
   this data *induces* a monoidal functor `C_arch → Machine` once the Machine
@@ -26,6 +25,11 @@ DOT and laid out by `dot` — so it cannot drift from the definitions on this pa
 <figcaption><em>Midnight Passport architecture — the wiring diagram
 <code>architectureˢ</code> denotes.</em></figcaption>
 </figure>
+
+This diagram is a component sketch, not a recovery protocol. The direct
+C14–C15 wire is retired. See [Recovery in the pinned account](#pinned-recovery-architecture)
+for what goes through the ledger, what stays off-chain, and what the
+contract checks.
 
 ```agda
 {-# OPTIONS --safe #-}
@@ -53,7 +57,7 @@ concatenation (`Var`/`_⊗₀_`/`unit` are the same sugar `FMTerm` provides over
 
 ```agda
 data ArchChan : Set where
-  TBD TBD-SYNC RECOVERY-P5 READ-STATE JUBJUB-SCHNORR STATE WITNESS-IPC CHAIN User : ArchChan
+  TBD TBD-SYNC READ-STATE JUBJUB-SCHNORR STATE WITNESS-IPC CHAIN User : ArchChan
 
 ObjTerm : Set
 ObjTerm = List ArchChan
@@ -81,14 +85,12 @@ data ArchBox : ObjTerm → ObjTerm → Set where
   didContract     : ArchBox unit (Var TBD)
   nameService     : ArchBox unit (Var TBD)
   peerDevices     : ArchBox unit (Var TBD-SYNC)
-  recoveryHelpers : ArchBox unit (Var RECOVERY-P5)
   indexer         : ArchBox unit (Var READ-STATE)
   accountCustody  : ArchBox (Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN) (Var JUBJUB-SCHNORR)
   localWallet     : ArchBox (Var TBD-SYNC) (Var STATE)
   proofServer     : ArchBox unit (Var WITNESS-IPC)
   passportKey     : ArchBox
-                      ( Var RECOVERY-P5 ⊗₀ Var READ-STATE ⊗₀ Var JUBJUB-SCHNORR
-                      ⊗₀ Var STATE ⊗₀ Var WITNESS-IPC )
+                      ( Var READ-STATE ⊗₀ Var JUBJUB-SCHNORR ⊗₀ Var STATE ⊗₀ Var WITNESS-IPC )
                       ( Var User )
 
 module HA = FreeStrictMonoidalHelper ArchBox; open HA
@@ -105,8 +107,7 @@ the `CHAIN` wire threading through the first.
 architectureᶜ : WTerm (Var CHAIN) (Var User)
 architectureᶜ =
     boxʷ passportKey
-  ∘ʷ (    boxʷ recoveryHelpers ⊗ʷ boxʷ indexer ⊗ʷ boxʷ accountCustody
-       ⊗ʷ boxʷ localWallet     ⊗ʷ boxʷ proofServer )
+  ∘ʷ ( boxʷ indexer ⊗ʷ boxʷ accountCustody ⊗ʷ boxʷ localWallet ⊗ʷ boxʷ proofServer )
   ∘ʷ ( boxʷ didContract ⊗ʷ boxʷ nameService ⊗ʷ idʷ ⊗ʷ boxʷ peerDevices )
 ```
 
@@ -123,7 +124,6 @@ image of `architectureᶜ`; it is the term the diagram above is rendered from.
 chanName : ArchChan → String
 chanName TBD            = "TBD"
 chanName TBD-SYNC       = "TBD SYNC"
-chanName RECOVERY-P5    = "RECOVERY-P5"
 chanName READ-STATE     = "READ STATE"
 chanName JUBJUB-SCHNORR = "JUBJUB SCHNORR"
 chanName STATE          = "STATE"
@@ -138,7 +138,6 @@ synBox : ∀ {A B} → ArchBox A B → FM.HomTerm (Φ A) (Φ B)
 synBox didContract     = FM.gen "Midnight DID contract"   FM.unit (FM.Var "TBD")
 synBox nameService     = FM.gen "Name Service"            FM.unit (FM.Var "TBD")
 synBox peerDevices     = FM.gen "+ peer devices"          FM.unit (FM.Var "TBD SYNC")
-synBox recoveryHelpers = FM.gen "Recovery helpers"        FM.unit (FM.Var "RECOVERY-P5")
 synBox indexer         = FM.gen "Indexer"                 FM.unit (FM.Var "READ STATE")
 synBox accountCustody  = FM.gen "Account custody contract"
                            (FM.Var "TBD" FM.⊗₀ FM.Var "TBD" FM.⊗₀ FM.Var "CHAIN")
@@ -146,7 +145,7 @@ synBox accountCustody  = FM.gen "Account custody contract"
 synBox localWallet     = FM.gen "Local wallet storage"    (FM.Var "TBD SYNC") (FM.Var "STATE")
 synBox proofServer     = FM.gen "Proof server"            FM.unit (FM.Var "WITNESS-IPC")
 synBox passportKey     = FM.gen "Passport Key"
-                           ( FM.Var "RECOVERY-P5" FM.⊗₀ FM.Var "READ STATE" FM.⊗₀ FM.Var "JUBJUB SCHNORR"
+                           ( FM.Var "READ STATE" FM.⊗₀ FM.Var "JUBJUB SCHNORR"
                            FM.⊗₀ FM.Var "STATE" FM.⊗₀ FM.Var "WITNESS-IPC" )
                            ( FM.Var "User" )
 
@@ -194,7 +193,6 @@ record ChannelModel : Set₁ where
   field
     ⟦TBD⟧            : Ch.Channel
     ⟦TBD-SYNC⟧       : Ch.Channel
-    ⟦RECOVERY-P5⟧    : Ch.Channel
     ⟦READ-STATE⟧     : Ch.Channel
     ⟦JUBJUB-SCHNORR⟧ : Ch.Channel
     ⟦STATE⟧          : Ch.Channel
@@ -205,7 +203,6 @@ record ChannelModel : Set₁ where
   channelSemantics : ArchChan → Ch.Channel
   channelSemantics TBD            = ⟦TBD⟧
   channelSemantics TBD-SYNC       = ⟦TBD-SYNC⟧
-  channelSemantics RECOVERY-P5    = ⟦RECOVERY-P5⟧
   channelSemantics READ-STATE     = ⟦READ-STATE⟧
   channelSemantics JUBJUB-SCHNORR = ⟦JUBJUB-SCHNORR⟧
   channelSemantics STATE          = ⟦STATE⟧
@@ -223,14 +220,12 @@ record MachineModel (channels : ChannelModel) : Set₁ where
     ⟦didContract⟧     : Mc.Machine ⟦ unit ⟧₀ ⟦ Var TBD ⟧₀
     ⟦nameService⟧     : Mc.Machine ⟦ unit ⟧₀ ⟦ Var TBD ⟧₀
     ⟦peerDevices⟧     : Mc.Machine ⟦ unit ⟧₀ ⟦ Var TBD-SYNC ⟧₀
-    ⟦recoveryHelpers⟧ : Mc.Machine ⟦ unit ⟧₀ ⟦ Var RECOVERY-P5 ⟧₀
     ⟦indexer⟧         : Mc.Machine ⟦ unit ⟧₀ ⟦ Var READ-STATE ⟧₀
     ⟦accountCustody⟧  : Mc.Machine ⟦ Var TBD ⊗₀ Var TBD ⊗₀ Var CHAIN ⟧₀ ⟦ Var JUBJUB-SCHNORR ⟧₀
     ⟦localWallet⟧     : Mc.Machine ⟦ Var TBD-SYNC ⟧₀ ⟦ Var STATE ⟧₀
     ⟦proofServer⟧     : Mc.Machine ⟦ unit ⟧₀ ⟦ Var WITNESS-IPC ⟧₀
     ⟦passportKey⟧     : Mc.Machine
-                          ⟦ Var RECOVERY-P5 ⊗₀ Var READ-STATE ⊗₀ Var JUBJUB-SCHNORR
-                          ⊗₀ Var STATE ⊗₀ Var WITNESS-IPC ⟧₀
+                          ⟦ Var READ-STATE ⊗₀ Var JUBJUB-SCHNORR ⊗₀ Var STATE ⊗₀ Var WITNESS-IPC ⟧₀
                           ⟦ Var User ⟧₀
 
   -- The functor from the box generators into the category of machines,
@@ -239,7 +234,6 @@ record MachineModel (channels : ChannelModel) : Set₁ where
   ⟦ didContract     ⟧₁ = ⟦didContract⟧
   ⟦ nameService     ⟧₁ = ⟦nameService⟧
   ⟦ peerDevices     ⟧₁ = ⟦peerDevices⟧
-  ⟦ recoveryHelpers ⟧₁ = ⟦recoveryHelpers⟧
   ⟦ indexer         ⟧₁ = ⟦indexer⟧
   ⟦ accountCustody  ⟧₁ = ⟦accountCustody⟧
   ⟦ localWallet     ⟧₁ = ⟦localWallet⟧
@@ -257,3 +251,47 @@ record MachineModel (channels : ChannelModel) : Set₁ where
   ⟦architecture⟧ : Mc.Machine ⟦ Var CHAIN ⟧₀ ⟦ Var User ⟧₀
   ⟦architecture⟧ = ⟦ architectureᶜ ⟧
 ```
+
+<a name="pinned-recovery-architecture"></a>
+
+## Recovery in the pinned account
+
+The ledger is the bulletin board, not a distribution channel from C14
+(total-loss recovery) to C15 (guardians). The sketch's `CHAIN` and
+`READ-STATE` interfaces do not specify the recovery payloads or guardian
+exchange.
+
+1. **Publish and read.** A live device authorizes `publish_recovery_session`
+   through its JubJub, k256, or P-256 entrypoint.
+   The account stores the session nonce, public BUSS vector and live length,
+   recovery public key, wrapped account viewing key, and an artefact version.
+   Readers obtain the public session data from ledger state, not a message
+   addressed to each guardian. Publication is refused while recovery is pending.
+2. **Recover off-chain.** Guardians derive individual contributions on demand
+   from the session nonce, account address and their own secrets. The
+   recovering wallet combines a quorum's contributions with the public vector
+   to reconstruct the secret. The wallet uses it to sign for recovery and
+   unwrap the viewing key; the secret is not a circuit or delegated-prover input.
+3. **Submit, cancel or finalise.** `recover_submit` verifies signatures from the
+   stored recovery key and the JubJub successor device key over the same
+   challenge. The request binds the account, successor keys, epoch,
+   authorisation nonce and time bound. An accepted submission records the
+   successor device entry, next recovery key and deadline. A live device can
+   veto through a JubJub, k256, or P-256 `recover_cancel` entrypoint, which
+   clears the pending record without a deadline check. `recover_finalise` is
+   permissionless and requires a pending record and block time at or after
+   its deadline, but no fresh signature. It replaces device authority,
+   installs the next recovery key, and invalidates the published vector.
+
+The pinned Compact code defines the
+[shared recovery bodies and JubJub/k256 entrypoints](https://github.com/midnightntwrk/passport/blob/fc19e471536febb2133f20e817847251622dcdf5/contract/contracts/account.compact#L2681-L2924)
+and the [P-256 publication and cancellation entrypoints](https://github.com/midnightntwrk/passport/blob/fc19e471536febb2133f20e817847251622dcdf5/contract/contracts/account-p256.compact#L254-L266).
+In the `Passport` reader entry point, follow `Passport.Account` for the local
+source transitions, `Conformance.FullAccountRecoverySecurityProperties` for
+the guard and state-change facts, and `Passport.AccountRecoveryOccurrenceProperties`
+for the accepted submission behind a finalisation.
+
+These are local contract results, not authenticated ledger publication or
+reads, a model of BUSS cryptography or guardian transport, a proof of quorum
+security or consent, or a guarantee that a live device can cancel in time.
+The abstract machines above are not proved to refine the pinned contract.

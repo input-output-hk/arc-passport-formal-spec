@@ -1,14 +1,8 @@
 -- Midnight.Passport.Channels
 --
--- Named channel specifications for every inter-component interface in
--- the Midnight Passport architecture.
---
--- A ChannelSpec records the human-readable name of the interface together
--- with the Agda types of messages flowing in each direction.  This is NOT
--- the categorical-crypto Channel type (CategoricalCrypto.Channel.Core);
--- it is a simpler, self-contained record used as the generator vocabulary
--- for FMTerm string diagrams.  The channel names here correspond directly
--- to the strings passed to `gen` nodes in Architecture.agda.
+-- Legacy message vocabulary for selected Passport interfaces. ChannelSpec
+-- names the two directions of a message pair; it is not a categorical-crypto
+-- Channel and does not define the wiring in Midnight.Passport.Semantics.
 
 module Midnight.Passport.Channels where
 
@@ -86,14 +80,6 @@ postulate
   GrantRequest  : Set   -- { scope : List String, grantSecret : GrantSecret }
   GrantResponse : Set   -- { commitment : Commitment }
 
--- ── Recovery path (C14 ↔ C15) ───────────────────────────────────────
-
--- Share distribution request from C14 TotalLossRecovery to C15
--- HelperProtocol.
-postulate
-  ShareRequest  : Set   -- { epoch : Epoch, shares : List (Bytes 32) }
-  ShareResponse : Set   -- { ack : Bool }
-
 -- ── Credential path (C18 → C20 / C21) ───────────────────────────────
 
 -- Merkle path from C18 AttestationTree to C20 SelectiveDisclosure.
@@ -111,10 +97,6 @@ postulate
 
 ------------------------------------------------------------------------
 -- Channel specification values
---
--- One ChannelSpec per inter-component interface.  The `name` strings
--- MUST match the channel-name strings used in Architecture.agda `gen`
--- nodes so that the string-diagram renderer can cross-reference them.
 
 -- ── Authentication path ─────────────────────────────────────────────
 
@@ -186,17 +168,6 @@ dApp-C10 = record
   { name    = "dApp-C10"
   ; inType  = GrantRequest
   ; outType = GrantResponse
-  }
-
--- ── Recovery path ────────────────────────────────────────────────────
-
--- C14 TotalLossRecovery coordinates share distribution with C15
--- HelperProtocol.
-C14-C15 : ChannelSpec
-C14-C15 = record
-  { name    = "C14-C15"
-  ; inType  = ShareRequest
-  ; outType = ShareResponse
   }
 
 -- ── Credential path ──────────────────────────────────────────────────
