@@ -74,8 +74,6 @@ postulate
   tagCommit  : DomainTag
   -- Nullifier derivation tag (C21)
   tagNullify : DomainTag
-  -- Recovery epoch bump tag (C14)
-  tagEpoch   : DomainTag
   -- Grant scope binding tag (C10/C12)
   tagGrant   : DomainTag
   -- Attestation leaf tag (C18)
@@ -85,8 +83,7 @@ postulate
 -- Commitment
 
 -- Domain-separated commitment: hash of (tag, secret).
--- Used throughout: grant commitments (C10), nullifier seeds (C21),
--- and recovery epoch commitments (C14).
+-- Used for grant commitments (C10) and nullifier seeds (C21).
 postulate
   Commitment : Set
   commit     : DomainTag → 𝔽 → Commitment
@@ -99,12 +96,6 @@ postulate
 postulate
   DeviceSecret : Set
 
--- Recovery secret stored out-of-band (e.g. printed or in a hardware
--- token).  Used by C14 TotalLossRecovery to register a new device key
--- after total device loss.
-postulate
-  RecoverySecret : Set
-
 -- Grant secret shared between an account holder and a dApp.
 -- Bound to a scope (C10 ScopedGrant) to limit on-chain capabilities.
 postulate
@@ -112,11 +103,6 @@ postulate
 
 ------------------------------------------------------------------------
 -- Protocol state types
-
--- Epoch counter.  Incremented by C14 on each recovery event.  Tracked
--- on-chain so that stale device registrations are rejected.
-Epoch : Set
-Epoch = ℕ
 
 -- A 32-byte colour value.  Used in the Midnight UTXO model to tag
 -- protocol-specific coin classes.

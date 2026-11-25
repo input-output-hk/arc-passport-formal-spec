@@ -88,3 +88,16 @@ same-view-replay (step (publish v) k) now {s} ev eligible
 same-view-replay (step (atChain c) k) now {s} ev eligible
   with prefix-success (required c) (eval (k tt) s) ev
 ... | es , refl , tail rewrite proj₁ eligible = same-view-replay (k tt) now tail (proj₂ eligible)
+
+replay-eligible : (now : ℕ) (j : Journal) (s : State) {t : State} →
+  replay now j s ≡ just t → Eligible now j
+replay-eligible now [] s rp = tt
+replay-eligible now (operated o x ∷ j) s rp with apply o x s
+... | nothing with rp
+...   | ()
+replay-eligible now (operated o x ∷ j) s rp | just u = replay-eligible now j u rp
+replay-eligible now (published v ∷ j) s rp = replay-eligible now j s rp
+replay-eligible now (required c ∷ j) s rp with holds c now
+... | false with rp
+...   | ()
+replay-eligible now (required c ∷ j) s rp | true = refl , replay-eligible now j s rp

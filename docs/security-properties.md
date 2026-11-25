@@ -25,9 +25,38 @@ See [modelling gaps](modelling-gaps-and-account-model.md#1-current-modelling-gap
 for the model's scope. In the proposed UC statements, `≤UC` means simulator
 existence against an ideal functionality with an explicit permitted-leakage port.
 
+The [symbolic signing model](conformance-testing-plan.md#symbolic-signing-and-adversarial-histories)
+records trusted abstract approvals, signing, attacker-owned keys and permanent
+compromise. Its checked results establish persistence and message-level issuance
+provenance in deployment-rooted joint signing/contract histories.
+
+The [concrete authorization layer](conformance-testing-plan.md#contract-level-authorization-evidence)
+adds the source signing requests, verification gates and contract-level statements.
+These are separate from the top-level promises below. Its ideal signing
+interpretation requires available key/digest tokens, while request-level provenance
+also requires agreement with the relevant honest issuances. Neither is a proof of
+concrete cryptographic security. Approval remains an abstract input, not evidence
+of human consent. Ledger-adoption correspondence, confidentiality, guardian
+protocols, liveness and upgrades remain outside this layer.
+
 ## 1. Properties
 
 ### P5' · Recovery-driven authority replacement
+
+*Recovery follows the rules you set.* Recovery must use the authority you
+configured and respect the cancellation window. This trusts your recovery
+quorum: the chain checks cryptographic authority, not your personal consent.
+This is P5's safety counterpart, not a requirement to invoke recovery for
+ordinary live-device-authorised encryption-key rotation.
+
+Submission must verify the **current recovery authority** and proof of
+successor-key possession, bound to the account, successor device key, successor
+recovery authority, current epoch/authorisation nonce, and signed time bound.
+Finalisation is permissionless enactment of that pending record after the veto
+window, provided it has not been cancelled. It requires no fresh signature.
+
+The full obligation below is schematic; the narrower checked subset is listed
+separately.
 
 ```agda
 RecoverySafety = ∀ {s} (t : Trace M s₀ s) {r} →
@@ -37,19 +66,54 @@ RecoverySafety = ∀ {s} (t : Trace M s₀ s) {r} →
   × VetoWindowElapsed r t × UncancelledPending r t
 ```
 
-Submission binds the current recovery authority, successor device and recovery
-keys, account, epoch/authorisation nonce, and signed time bound. Finalisation
-requires an uncancelled pending record and an elapsed veto window, not fresh
-signatures. Ordinary device-authorised encryption-key rotation is outside this
-property. Let `k` be the number of guardian shares required for reconstruction
-(`t+1` in the recovery protocol's threshold notation). Cryptographic authority
-does not certify human consent: a colluding quorum of `k` guardians can
-reconstruct it, and total device loss removes the veto.
+These are the two obligations corresponding to **I-5′.1** (submission) and
+**I-5′.2** (finalisation). The chain cannot certify an off-chain guardian
+exchange or the human owner's consent. With `n` guardians and threshold
+parameter `t`, reconstruction requires **t+1** shares; a colluding quorum can
+recover legitimately under the cryptographic gate. Human-consent safety
+therefore assumes the quorum is trusted and recovery authority is uncompromised.
+A live device can cancel; in total loss the veto window is only a delay/alarm.
 
-The [recovery specification](recovery-specification.md#intended-properties)
-develops a separate device-authority model and proof plan. Its scope excludes
-guardian reconstruction, grants, asset accounting, and prover privacy. It is
-not an established contract-security theorem.
+**Evidence:** [ordinary rotation](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L1220-L1247),
+[submission, cancellation, and finalisation](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/contract/contracts/account.compact#L2754-L2878).
+**Checked/exercised subset:** the
+[recovery specification's checked routes](recovery-specification.md#intended-properties)
+give finite actual-admission trace exclusion for compromised **device keys**
+after corrected recovery, positive guard-premised recovery/rotation, local
+submission provenance and deadline/cancellation/replay/rejection results.
+[Recovery conformance](conformance-recovery.md) exercises the source attack and
+the stamped-map repair, including ordinary rotation, wrong/stale bindings,
+deadline equality, cancellation after the deadline, and permissionless finalise.
+
+That earlier admission-model exclusion assumes key-entry separation, a fixed
+compromise set, an uncompromised successor, and no subsequent authorised enrolment
+of a compromised key encoding. Its scope does not establish deployment, full
+cancelled-submission occurrence provenance or model-to-circuit refinement.
+
+**Checked pinned-main local counterpart:** the
+[`source recovery statements`](../src/Conformance/FullAccountRecoverySecurityProperties.agda)
+extract current recovery-key and successor-key verifier acceptance on the exact
+source request, its stored epoch/nonce and signed time bound, pending installation,
+cancellation, and finalisation's deadline and replacement effects.
+The [`account history statements`](../src/Passport/AccountRecoveryOccurrenceProperties.agda)
+then prove that a pending record in a deployment-rooted history comes from an
+actual accepted submission occurrence, followed only by refused attempts or
+accepted calls preserving it. There is no intervening accepted submission,
+cancellation or finalisation. `finalisation-enacts-occurrence` identifies the
+enacted successor and recovery key, and the checked deadline, with that occurrence.
+
+This closes the local occurrence gap, not the top-level assurance gap.
+Request-level symbolic provenance uses the stated signing-token and
+relevant-request agreement premises. Concrete cryptographic realization,
+guardian consent, trustworthy chain time, ledger adoption and timely cancellation
+remain separate obligations.
+
+The [`full-source exclusion statements`](../src/Passport/RevocationExclusionProperties.agda)
+derive the recovery epoch advance and identify every later live device entry as
+the installed successor or an actual subsequent insertion occurrence.
+Exclusion of a queried device opening additionally requires separation from
+that successor and those insertions. Explicit re-enrolment, successor reuse and
+relevant collisions are not hidden by an unconditional permanent-key ban.
 
 ### P11 · Transaction safety
 
@@ -60,12 +124,173 @@ TransactionSafety = ∀ {s} (t : Trace M s₀ s) {tx} →
   × AccountOperationStateBound tx t × WithinCaps tx t × NotReplayed tx t
 ```
 
-Liveness of an authority is checked at adoption, including device/grant
-revocation, grant expiry, and applicable epochs, generations, and nonces.
+The top-level obligation requires authority to be live at adoption, including
+device/grant revocation, grant expiry, and applicable epochs, generations and nonces.
 Unforgeability concerns fresh unauthorised operations under the scheme's
 cryptographic and compromise assumptions, not exclusive production of signature
 bytes: the [ECDSA policy](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/docs/mps-mip/mips/mip-xxxx-signature-schemes.md#L238-L246)
 accepts both `(r, s)` and `(r, n−s)` for the same single execution.
+
+**Composed local P11 component:** [`transaction-safety`](../src/Passport/TransactionSafetyProperties.agda)
+classifies an actual committed runtime withdrawal following deployment-rooted
+history into the device or grant branch, covering all schemes and destinations.
+It derives live source authorization, the encoded request and its equality
+with the dispatcher's singleton `signedRequests`. The grant branch additionally
+enforces the witnessed intended policy and bounds the actual issuance episode's
+historical total **including this withdrawal** by its cap. Policy openings,
+relevant object/caller agreement, historical spent-opening agreement and the
+current spend's opening agreement remain separate explicit premises.
+
+The composition retains different replay boundaries: immediate device
+consumed-credentials refusal under actual entry separation, versus historical
+same-issuance grant-token exclusion under relevant request binding. Its
+`safe-request-provenance` corollary uses the same joint history's contract
+projection, available required tokens and identity-view trace agreement to
+derive attacker control or approved honest signing of the exact request.
+Neither source acceptance alone nor the composition supplies those symbolic
+premises. Cryptographic realization, ledger admission/adoption, authenticated
+value/effect correspondence and arbitrary-history device replay remain open.
+
+The [ledger-adoption boundary](ledger-adoption-boundary.md) specifies the missing
+source-call/segment correspondence. A deployment-rooted projection must cover
+every relevant committed account mutation, including any state-changing partial
+prefix; selecting only fully successful calls cannot erase such predecessors.
+Its compiler, proof-system, context, asset, ordering and finality obligations are
+candidates for justification or explicit trust, not approved assumptions.
+
+The [partial-execution investigation](ledger-adoption-boundary.md#partition-and-application-diagnostics)
+found no checkpoint or split source call in 141 sampled transcripts covering
+all 52 runtime entrypoints. Native application diagnostics showed complete
+calls surviving another segment's failure, while calls sharing a failed
+segment rolled back together; no within-call authorization-only prefix was
+observed. These results used proof-erased transactions, synthetic state/funding,
+and disabled balancing, native-proof and contract-proof checks. They support
+only finite diagnostic whole-call behavior, not authenticated serialization;
+full-validation application remains blocked by unavailable proving resources.
+
+**Checked local contract evidence:** the
+[`device statements`](../src/Conformance/FullAccountDeviceSecurityProperties.agda)
+derive live entry membership, verification, entry rolling and bounded nonce/round
+increments from actual successful device calls. Activation instead requires the
+unconsumed boot commitment; it verifies no signature.
+The [`grant statements`](../src/Conformance/FullAccountGrantSecurityProperties.agda)
+derive active/current/unexpired record checks, caller and object commitments,
+recipient restrictions, per-call and presented cumulative caps, coin bounds,
+verification, and the nonce/spent record stored in the actual final state.
+
+These facts do not yet prove the adoption-level formula. Commitment matches need
+appropriate opening agreement to identify intended keys and policies;
+`cumulative-spend` takes agreement for the two relevant spent openings, not a
+global injectivity axiom.
+
+The [`semantic scope statements`](../src/Conformance/FullAccountGrantScopeProperties.agda)
+connect accepted typed runtime withdrawals to an intended policy witnessed by
+openings of the actual stored grant's object and caller commitments.
+Relevant-pair opening agreement yields the intended asset/color, recipient
+kind/address and whole-held-coin maximum; a pinned caller must be the observed
+immediate contract caller. Zero recipient kind and the zero caller commitment
+mean unrestricted policies. The caller commitment's reserved-zero check
+separates a pinned caller from that unrestricted sentinel. These conclusions
+assume agreement only for the relevant object/caller openings, not global hash
+injectivity, authenticated coin ownership or ledger adoption.
+
+The [commitment-binding audit](commitment-binding-audit.md) inventories fixed
+native preimages and canonical domains for the relevant opening agreements.
+The [canonical serialization proofs](../src/Passport/CommitmentEncodingProperties.agda)
+establish roundtrip, octet validity and injectivity of the concrete encoder for
+one fixed layout under explicit `CanonicalAtoms` conditions. The layout catalog
+covers audited commitments and source challenges; generic typed-atom inequality
+across layouts still does not imply different bytes. Universal source/ABI
+satisfaction of those conditions, native serializer correspondence, cross-layout
+domain separation and the cryptographic reduction remain obligations; the
+serialization theorem alone does not discharge relevant-opening agreement.
+
+The [`grant confinement statements`](../src/Passport/GrantConfinementProperties.agda)
+derive preservation of every ledger cell except grants, round, unshielded
+balances, inbox and inbox count. Successful grant withdrawals preserve device
+enrolment, recovery configuration/pending records, encryption keys and account
+authority counters; finite grant-withdrawal/refusal histories preserve that
+authority frame. Each accepted withdrawal preserves other grant records under
+explicit identifier separation and preserves its own issuance identity and
+scope while settling its nonce/spent commitment. No cryptographic binding
+premise is needed for these structural facts, but they do not establish correct
+change recording, availability or protection from all forms of griefing.
+
+The [`whole-history spending statements`](../src/Passport/GrantSpendingProperties.agda)
+now prove that every current or archived issuance episode stays within its cap,
+and that its stored commitment and nonce match accumulated accepted spending.
+`HistoryAgreement` supplies agreement only for the relevant spent-opening pairs;
+it does not assume the caller's presented total already equals historical spending.
+Reissue and reset preserve the accounting of earlier episodes rather than erasing
+their spending. These remain local contract results, not ledger-adoption proofs.
+
+This is the contract-level counterpart of P7's issuance-scoped cumulative
+allowance (I-7.8), not a per-operation cap or rate limit. Fresh issuance requires
+account authorization; it starts a separately bounded episode rather than
+resetting the accounting of the previous issuance.
+
+The [`grant replay statements`](../src/Passport/GrantReplayProperties.agda)
+derive retained issuance identity and strictly increasing nonce between actual
+accepted spends with the same identifier and no intervening accepted reissue.
+The intervening history may contain arbitrary runtime calls and refusals;
+accepted zero-value spends are included without amount-positivity or
+spent-opening-binding premises. Source requests therefore differ in nonce.
+
+At the ideal-signing level, the old token cannot equal the later required token
+under `RelevantRequestBinding`: equal final source encodings for this relevant
+key/request pair must imply equal nonce views. Tokens remain available, and
+fresh authorized signing remains permitted. Existing signing provenance
+additionally traces a later available token to attacker control or approved
+honest issuance with the later nonce view, under trace-scoped `IssuedAgreement`.
+
+Exclusion of repeated concrete signature material needs the separate
+`SignatureTokenInterpretation` law: successful reuse of that key/signature pair
+must realize equal exact-message encodings. This is an external relevant-pair
+realization premise, not a consequence of the symbolic model. Schnorr scalar
+reduction, ECDSA digest reduction/multiple verifying messages, and envelope or
+WebAuthn equivalences remain obligations; neither unconditional byte-signature
+replay security nor ledger adoption is established.
+
+The [cryptographic assumptions audit](cryptographic-assumptions-audit.md)
+demonstrates why the byte-signature interpretation is not a universal native
+law: identical key/signature material verifies distinct raw digests for all
+three schemes, including distinct reduced ECDSA digests. The witnesses do not
+construct source-request preimages or a Passport replay. On an already
+nonce-separated spend pair, relevant request binding is equivalent to exact
+token separation; that premise and the signature-token law require independent
+realization evidence rather than providing a cryptographic reduction themselves.
+
+The [`revocation history statements`](../src/Passport/RevocationExclusionProperties.agda)
+derive nondecreasing authorization nonce, device epoch and grant generation,
+strictly increasing issuance stamps, and persistent stale-record exclusion.
+A revoked identifier remains absent or inactive until an actual matching
+device-authorized issuance occurrence; the corresponding source grant call
+cannot succeed before that boundary. Reissuance is an explicit exception,
+not inferred from equality of endpoint records.
+
+Device `immediate-replay-collision` covers consecutive successful calls on the
+same curve and operation: equal challenges imply distinct typed source preimages
+with equal hashes. It is not a theorem that the same signature cannot verify a
+different effective challenge, nor a whole-history/cross-operation replay theorem.
+
+`exact-device-replay-refused` additionally proves that a successful device call
+cannot be repeated verbatim from its final state when its body preserves the
+device set and its current and rolled entries differ. This covers all device
+operations except add/remove-device. `consumed-credentials-refused` excludes
+authorization using the same account identity and decoded authentication
+arguments at that state, even with a different challenge. Actual entry
+separation is an explicit premise, not inferred from different counters; these
+results cover neither intervening histories nor ledger adoption.
+
+The [`ordinary device-removal statements`](../src/Passport/DeviceRemovalProperties.agda)
+extract target membership, distinction from the caller's rolled entry, stored
+count greater than one, exact removal and a one-step count decrement from a
+committed source removal. The removed literal entry remains absent along later
+runtime history unless an actual activation, rolling, enrolment or recovery
+successor introduces it. A later device call whose source entry computation
+yields that removed value is excluded before such reintroduction. This is
+entry-specific: other openings for the same key may remain live. No permanent
+key ban, count/cardinality equality or ledger-adoption result is established.
 
 ### P12 · Snapshot-aware value integrity
 
@@ -100,6 +325,24 @@ The existing `Sound` has no asset, snapshot, or completeness fields. The
 conditional accounting theorem proves neither `SnapshotSound` nor
 `SnapshotProgress`; both require revised query semantics and concrete proofs.
 
+**Checked local precursor:** the
+[`unshielded accounting statements`](../src/Passport/UnshieldedAccountingProperties.agda)
+derive exact per-color accounting from actual runtime executions, for arbitrary
+primitive backends. Accepted deposits credit the declared received amount;
+device/grant withdrawals debit the declared sent amount with sufficient funding.
+Other entrypoints preserve the balance map, and refused calls preserve the whole
+state. From deployment, for every color:
+`stored balance + cumulative declared sends = cumulative declared receives`.
+Absent entries mean zero; the proof includes constructor initialization and
+actual final states after authentication and operation tails.
+
+This connects storage to emitted `receiveUnshielded`/`sendUnshielded` effects,
+not to authenticated or adopted ledger assets. Native/model execution agreed on
+42 scenarios across all three signing schemes. `SnapshotSound` still needs
+ledger-adoption correspondence, fee attribution and snapshot/completeness-aware
+reporting; `SnapshotProgress` additionally needs the synchronization and scheduling
+model described above.
+
 ### P13 · Funds availability
 
 A recoverable holding has coin descriptions/openings, viewing material, and
@@ -131,6 +374,17 @@ succeeds on every execution satisfying the data, proving, fee, and fair-progress
 assumptions, not just one favourable continuation. P11's authorisation limits
 and P8's operator independence still apply.
 
+I-13.5–I-13.7 distinguish three obligations within `RecoverabilityPreserved`:
+durable recovery information must already be available when a spend takes
+effect, it must correctly describe the actual remaining holdings and support
+recovery with the applicable key material, and an authorized but malicious
+scoped grantee must not destroy recoverability of value outside its spending
+authority. `SupportedEvolution` must therefore include adversarial choices by
+such grantees, not only honest-client executions. Neither a later backfill
+transaction nor an assumed surviving private coin store establishes crash safety;
+atomic append alone does not establish description or encryption-key binding.
+These are outcome requirements, not a mandate for a particular inbox or circuit.
+
 The [custody baseline](https://github.com/midnightntwrk/passport/blob/5d12798321d3daba37b1da90162ee1468daf38a6/docs/mps-mip/mips/mip-xxxx-native-asset-custody.md#L723-L759)
 has two distinct gaps. Poisoned outsider deposits fall outside honestly acquired
 recoverable holdings; covering them needs description/encryption binding.
@@ -138,6 +392,31 @@ Losing the sole change description before inbox append can strand previously
 recoverable value, violating P13. That mandatory durability obligation remains
 open: recovery must survive a crash or total device loss in that window without
 an extra client copy. Neither gap is fixed or proved here.
+
+**Pinned-main counterexamples:** native probes at
+`fc19e471536febb2133f20e817847251622dcdf5` exercised both shielded destination
+paths on jubjub, k256 and P256. Authorized grant withdrawals accepted:
+
+- ciphertext under the actual current key describing value 999 while the returned
+  change had value 6; and
+- ciphertext encrypted to a different real key while the separately signed
+  `enc_pk` argument matched the current `enc_key`.
+
+The supplied entry was appended atomically, but its contents were not bound to
+the returned change or the declared recipient key. The
+[grant bound/key guard](https://github.com/midnightntwrk/passport/blob/fc19e471536febb2133f20e817847251622dcdf5/contract/contracts/account.compact#L1931-L1938)
+does not establish either relation. Device withdrawals in the same probes returned
+change without appending an inbox entry; the examined client uses separate
+withdrawal and backfill submissions.
+
+The 123-observation probe included correct-encryption controls, exact spends,
+stale-key refusals and replay preservation, using production signatures and
+X25519/HKDF/AES-GCM. This is native execution evidence, not an on-chain attack or
+a proof that no alternative recovery protocol could exist. The complete
+durability/binding candidate is therefore **not established**: it needs an
+enforced description/encryption relation against malicious authorized delegates,
+and an implemented crash-safe device protocol. An append-only theorem or an
+honest-client encryption law would not discharge those obligations.
 
 ### P14 · Private proving
 
@@ -222,5 +501,22 @@ NonGriefability = ∀ {s s' d op} (t : Trace M s₀ s) (u : Trace M s s') →
 DeploymentAuthenticity = ∀ {s c} (t : Trace M s₀ s) →
   attaches c ∈ᵗ t → codeOf c ≡ canonicalCode
 ```
+
+**Checked restricted preservation:**
+[`OutsiderPreservationProperties`](../src/Passport/OutsiderPreservationProperties.agda)
+covers actual rooted local histories extended only by permissionless deposits
+and refused runtime attempts. These steps retain enrolled device membership
+and selected stored authority, published recovery and pending recovery cells.
+Successful bootstrap and permissionless recovery finalisation are explicitly
+excluded: they legitimately change authority.
+
+The same development proves each accepted deposit consumes one round and bounds
+their number by the remaining Uint64 round capacity. This is structural
+preservation, **not** the `AvailableVia` conclusion above. Inbox capacity,
+existing nonce exhaustion, fees/proving resources, time-dependent expiry and
+native asset admission remain separate. Preserved recovery bytes need not be
+decryptable or sufficient for recovery. A 15-observation native/model/VM smoke
+exercised deposits, refusals, pending-record preservation and the excluded
+bootstrap/finalisation boundaries.
 
 The sketches assume adopted ledger state is final. Reorg semantics remain open.

@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "source": {
+    "revision": "7d21a277be9f92e7bc36a1a296599b9420194c44",
+    "source": {
+      "contracts/account.compact": "8e8a9f9cc460903d72491f82d98ed18b0e2dea397b59d391d9c42f2aac0f6db0",
+      "contracts/control.compact": "2f092f1f7955256a542f1bfea5622854b5128b038fefea16e52c4718ebd05bcb",
+      "contracts/faucet.compact": "1834ad2a49235cc405390f22fdd3e9480bfe66ebf88817947e4250d400b95f71",
+      "package.json": "177aa58e92c745f407696894f155f45bc17a5667976d59507cca884e8dca7e94",
+      "package-lock.json": "445c73500a7cf836cf917c8c591bd6db432024f613a61b58a2e54505aa756c60"
+    },
+    "signing": "6d5c443bc896203b84e00feb5583eee7a0f974437cf555d8891dab7d54ac6898",
+    "dependencies": "970814d6bda4917bb1ffab3d2252e8ec9502322907ff591694fb6751e4516ae4",
+    "runtimeVersion": "0.18.0-rc.1",
+    "managed": {
+      "account": "7258a01874d8eef8fee79b0486d911e197e0e84c3a778009e4f022209ea39772",
+      "control": "a4213b66a10b657fe381805d04d265ccfa3b8a4f3670ce47a7f08afd23e74d9a",
+      "faucet": "95d305fd16d4ff319397bd752ddb4f8e48deda7c4bd8d5aab7d0c8aea4cbca35"
+    }
+  },
+  "repaired": {
+    "revision": "7d21a277be9f92e7bc36a1a296599b9420194c44",
+    "source": {
+      "contracts/account.compact": "f73e0e70502eb9fabea06d420d14af2a512dfbb4b125052c87abab29ed2ba0bb",
+      "contracts/control.compact": "2f092f1f7955256a542f1bfea5622854b5128b038fefea16e52c4718ebd05bcb",
+      "contracts/faucet.compact": "1834ad2a49235cc405390f22fdd3e9480bfe66ebf88817947e4250d400b95f71",
+      "package.json": "177aa58e92c745f407696894f155f45bc17a5667976d59507cca884e8dca7e94",
+      "package-lock.json": "445c73500a7cf836cf917c8c591bd6db432024f613a61b58a2e54505aa756c60"
+    },
+    "signing": "8f7e4fef82b6b2733c961a9146334381ad064239f2bb49a05f3f10f1fe50f1a2",
+    "dependencies": "2c24bbb563b32df3e0730d1841480ef20e514f1727de4eb56c68e2ea6282e3ad",
+    "runtimeVersion": "0.18.0-rc.1",
+    "managed": {
+      "account": "5b52f16e33f6c203f3b99a022f046ad1cbec748e6a97ef35f2657370fb20e183",
+      "control": "a4213b66a10b657fe381805d04d265ccfa3b8a4f3670ce47a7f08afd23e74d9a",
+      "faucet": "95d305fd16d4ff319397bd752ddb4f8e48deda7c4bd8d5aab7d0c8aea4cbca35"
+    }
+  },
+  "compiler": "26e43ca45aafc7fa0d0415a053d4d8092367516fac2f118bb37c7fbd775d4a40",
+  "node": {
+    "version": "v22.22.1",
+    "binary": "7142be834142d58bca93f8acac61e3bdf4ed8c7b40392f2e99fd9f685fa5f90a"
+  },
+  "model": {
+    "binary": "816ca6cb9d4c2696088d75f9edcd26cfb194aa320aa077fd073af705031ff21e",
+    "sources": "c61ee9f70d23732f916830107220ea0594006612d45ddcd205fadbb937a31889",
+    "buildInputs": {
+      "flake.nix": "6d9757b095cff79da779493fd9b8e434d1ceeb312d7c2584e58c0b595f979a2e",
+      "flake.lock": "bdd3bc66583709024a64df61a9c2373f143d97f116afd19d47b1bb68b495d282",
+      "pagda.nix": "9f8f5ae804aa03d862a56c489db0da2378a14a65d9c4805f855a12da0bee4ceb",
+      "arc-passport.agda-lib": "dd8bcae4946b9012b9ba3f38ae0a5bc1fb996855691ba1cb083e2b47b92acb2f"
+    },
+    "pagda": "68c6a0f45ff368433f860ce7eceb408d9ac03b8cf6d46472f906a5fa65dbd036",
+    "agda": "9d65d6c978df828ac5a9647f94333dff95ec591822ec5166516503335a44a8a9",
+    "checkEnv": "577ac30cfbd2a1e09764b23da839c28a2a29aa9520a586f57542c6229a67e60b"
+  },
+  "harness": {
+    "gate.mjs": "227db32642ccd84bfa27fa3fd1c93793d58b3f2a50d2fcf30d53855214788b3b",
+    "recovery-pins.json": "f67bec00fc6ff62b58dcd3fe17561830f7a2353cdda05083ce7d64efd20f8332",
+    "recovery.ts": "6164bbea7a310b9a4466236b116cfb88ff4612d88a91ff55437970f112e38909",
+    "mutation.ts": "c690b440d1ea1382b8cdfa1150b3157b47d62b63d86cc623de9efde0de891167",
+    "package.json": "8f47a728062f0af0676d90667eae6e6488bac4e8db05966c80852e78c856b18d",
+    "driver.ts": "99a07d3367b81bd732ed0b2906baa66f228856b151423bea3461c39b1e61dc04",
+    "impl.ts": "2e9f8c7d897cfb1bac52c438488284922d225196cd600638f4eb80d0c0df0e38",
+    "model.ts": "e734f4d879b0e004b87db87134a45733c33c467a4fd64507823c4bee99008740",
+    "main.ts": "d6731db063e50d1806bb6571d411dd989325d0dcdf662436c63a8e96ec3d9f2f",
+    "prng.ts": "25373613f5f33af93acd5f935d8ee8820f2b4c333c3a017b43d3c6a727bd62eb"
+  },
+  "settings": {
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "randomSteps": 60,
+    "timeOrigin": 1800000000,
+    "scenarioVetoWindow": "86400",
+    "generatedAccountSeedOffset": 2000,
+    "randomAccountSeedOffset": 1000,
+    "generatedEpochs": "1 + PRNG(seed).below(3), after drawing veto window",
+    "generatedVetoWindow": [
+      "60",
+      "604800"
+    ],
+    "plantedUseCounter": [
+      "0",
+      "4"
+    ],
+    "compileArgs": [
+      "--skip-zk",
+      "--feature-zkir-v3"
+    ],
+    "mutations": [
+      "deadline",
+      "debit"
+    ]
+  },
+  "locations": {
+    "source": "/Users/andre/IOHK/arc-passport-recovery-conformance/contract",
+    "repaired": "/Users/andre/IOHK/arc-passport-formal-spec/.worktrees/recovery-authority-stamp/contract",
+    "model": "/Users/andre/IOHK/arc-passport-formal-spec/_build/conformance/Main",
+    "compiler": "/home/agent/.compact/versions/0.33.0-rc.2/aarch64-linux/compactc",
+    "pagda": "/nix/store/033ganzhfyhfbfci47n0a0k16d68izin-pagda-0.1.0.0/bin/pagda"
+  }
+}

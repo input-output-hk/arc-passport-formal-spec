@@ -42,6 +42,13 @@ module _ (q : Submission) where
       inj₂ (finished (result (execution tx)) u (journal (execution tx)))) same
     (Replay.replay-refinement (body (target tx) (entry tx) (input tx)) now (certified tx) replayed)
 
+  accepted-eligible : (s t : State) → admit s q ≡ (t , accepted) →
+    Eligible now (journal (execution tx))
+  accepted-eligible s t eq with target tx ≟ self
+  accepted-eligible s t eq | yes same
+    with replay now (journal (execution tx)) s in replayed | eq
+  ... | just u | refl = Replay.replay-eligible now (journal (execution tx)) s replayed
+
   rejection-atomic : (s t : State) → admit s q ≡ (t , rejected) → t ≡ s
   rejection-atomic s t eq with target tx ≟ self
   ... | no _ with eq

@@ -1,17 +1,13 @@
 # Midnight.Passport.Properties
 
-Security properties of the Midnight Passport architecture, stated against the
-machine semantics of `Midnight.Passport.Semantics`. The headline result is
-**preservation of value**:
+Conditional preservation of value for the component sketch in
+`Midnight.Passport.Semantics`, not for the pinned account contract.
+Its channel interpretation does not specify recovery calls or guardian exchanges.
 
-> Run the whole passport system from its genesis state. If the account
-> custody contract keeps correct books and answers balance queries, and the
-> passport key relays those queries and their answers without inventing any,
-> then no balance the system ever reports exceeds the true balance, and the
-> true balance is always observable.
-
-Every hypothesis is a condition on one component; that the *architecture* then
-routes balance queries faithfully is proved, not assumed.
+> For a machine interpretation of the sketch, if the account custody contract
+> keeps correct books and the wiring preserves transaction flows and balance
+> queries, then a balance answer never exceeds the true balance. After any run,
+> a continuation with zero net flow can report the true balance.
 
 ```agda
 {-# OPTIONS --safe #-}
@@ -21,7 +17,6 @@ open import CategoricalCrypto.Channel.Core as Ch hiding (_⊗₀_)
 module Midnight.Passport.Properties
   (⟦TBD⟧ ⟦TBD-SYNC⟧             : Channel)
   (SignRequest Signature        : Set)   -- C5-C6
-  (ShareRequest ShareResponse   : Set)   -- C14-C15
   (WitnessRequest WitnessResponse : Set) -- C7-C6
   (LedgerWrite ChainEvent       : Set)   -- C1-Chain
   (WalletState                  : Set)
@@ -108,7 +103,6 @@ channelModel : ChannelModel
 channelModel = record
   { ⟦TBD⟧            = ⟦TBD⟧
   ; ⟦TBD-SYNC⟧       = ⟦TBD-SYNC⟧
-  ; ⟦RECOVERY-P5⟧    = ShareResponse ⇿ ShareRequest     -- C14-C15
   ; ⟦READ-STATE⟧     = ChainEvent ⇿ ⊥                   -- C1-Chain, read side
   ; ⟦JUBJUB-SCHNORR⟧ = JubjubSchnorrᶜ                   -- C5-C6 + balance
   ; ⟦STATE⟧          = WalletState ⇿ ⊥
